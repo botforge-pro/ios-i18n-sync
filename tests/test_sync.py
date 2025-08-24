@@ -180,8 +180,13 @@ class TestApply:
         yaml_data = {
             "cancel": {
                 "en": "Cancel",
-                "ru": "Отмена"
-                # Missing German
+                "ru": "Отмена",
+                "de": "Abbrechen"
+            },
+            "save": {
+                "en": "Save",
+                "ru": "Сохранить"
+                # Missing German translation
             }
         }
         
@@ -196,7 +201,8 @@ class TestApply:
         de_file = resources / "de.lproj" / "Localizable.strings"
         assert de_file.exists()
         content = de_file.read_text(encoding='utf-8')
-        assert '"cancel" = "";' in content
+        assert '"cancel" = "Abbrechen";' in content
+        assert '"save" = "";' in content  # Missing translation gets empty value
     
     def test_apply_no_yaml(self, temp_dir):
         """Test apply fails gracefully when YAML doesn't exist."""

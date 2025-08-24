@@ -5,7 +5,6 @@ import re
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Set
-from collections import OrderedDict
 
 
 class I18nSync:
@@ -149,22 +148,22 @@ class I18nSync:
     
     def _save_yaml(self) -> None:
         """Save translations to YAML file."""
-        # Convert to OrderedDict for prettier output
-        ordered = OrderedDict()
+        # Create regular dict with sorted keys for prettier output
+        output = {}
         
         for key in sorted(self.translations.keys()):
-            ordered[key] = OrderedDict()
+            output[key] = {}
             # Put 'en' first if it exists
             if 'en' in self.translations[key]:
-                ordered[key]['en'] = self.translations[key]['en']
+                output[key]['en'] = self.translations[key]['en']
             
             # Then other languages alphabetically
             for lang in sorted(self.translations[key].keys()):
                 if lang != 'en':
-                    ordered[key][lang] = self.translations[key][lang]
+                    output[key][lang] = self.translations[key][lang]
         
         with open(self.yaml_path, 'w', encoding='utf-8') as f:
-            yaml.dump(ordered, f, 
+            yaml.dump(output, f, 
                      default_flow_style=False, 
                      allow_unicode=True,
                      sort_keys=False,
