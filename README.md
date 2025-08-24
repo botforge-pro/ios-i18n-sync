@@ -5,7 +5,7 @@ Synchronize iOS `.strings` localization files through a single YAML file. Edit t
 ## Installation
 
 ```bash
-pip install -e git+https://github.com/botforge-pro/ios-i18n-sync.git#egg=ios-i18n-sync
+pip install git+https://github.com/botforge-pro/ios-i18n-sync.git
 ```
 
 ## Usage

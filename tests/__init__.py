@@ -1,0 +1,1 @@
+"""Tests for iOS i18n sync tool."""
