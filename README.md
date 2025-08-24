@@ -57,3 +57,11 @@ save:
 - Sorts keys alphabetically in YAML
 - Reports missing translations during extract
 - Handles Unicode correctly
+
+## Why no `check` command?
+
+The `extract` command already serves as a check - it reports the status of all translations when extracting to YAML. You'll see output like:
+- `All keys present in all languages ✓` - Everything is consistent
+- Missing keys are reported per language if found
+
+There's no need for a separate `check` command since `extract` is non-destructive to your .strings files and provides all the validation information you need.
