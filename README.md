@@ -1,3 +1,5 @@
+![Tests](https://github.com/botforge-pro/ios-i18n-sync/workflows/Tests/badge.svg)
+
 # iOS i18n Sync
 
 Synchronize iOS `.strings` localization files through a single YAML file. Edit translations in one place instead of managing dozens of separate files.
