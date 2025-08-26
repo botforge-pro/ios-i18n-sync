@@ -10,16 +10,18 @@ from typing import Dict, List, Optional, Set
 class I18nSync:
     """Synchronize iOS .strings files through YAML."""
     
-    def __init__(self, resources_path: str = "Resources", yaml_path: str = "translations.yaml"):
+    def __init__(self, resources_path: str = "Resources", yaml_path: str = "translations.yaml", strings_file: str = "Localizable"):
         """
         Initialize the sync tool.
         
         Args:
             resources_path: Path to Resources directory containing *.lproj folders
             yaml_path: Path to the YAML file for translations
+            strings_file: Name of the strings file without extension (e.g., "Localizable" or "InfoPlist")
         """
         self.resources_path = Path(resources_path)
         self.yaml_path = Path(yaml_path)
+        self.strings_file = strings_file
         self.translations: Dict[str, Dict[str, str]] = {}
         self.languages: Set[str] = set()
         
@@ -38,7 +40,7 @@ class I18nSync:
             lang = lproj_dir.stem  # e.g., "en", "ru", "de"
             self.languages.add(lang)
             
-            strings_file = lproj_dir / "Localizable.strings"
+            strings_file = lproj_dir / f"{self.strings_file}.strings"
             if not strings_file.exists():
                 print(f"Warning: {strings_file} not found, skipping")
                 continue
@@ -65,7 +67,7 @@ class I18nSync:
             lproj_dir = self.resources_path / f"{lang}.lproj"
             lproj_dir.mkdir(exist_ok=True, parents=True)
             
-            strings_file = lproj_dir / "Localizable.strings"
+            strings_file = lproj_dir / f"{self.strings_file}.strings"
             self._write_strings_file(strings_file, lang)
         
         print(f"Applied {len(self.translations)} keys to {len(self.languages)} languages")
@@ -140,7 +142,7 @@ class I18nSync:
         
         lang_name = lang_names.get(lang, lang)
         return f"""/* 
-  Localizable.strings
+  {self.strings_file}.strings
   
   {lang_name}
 */

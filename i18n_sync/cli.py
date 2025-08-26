@@ -17,10 +17,12 @@ def cli():
               help='Path to Resources directory (default: Resources)')
 @click.option('--output', '-o', default='translations.yaml',
               help='Output YAML file (default: translations.yaml)')
-def extract(resources, output):
+@click.option('--strings-file', '-s', default='Localizable',
+              help='Name of strings file without extension (default: Localizable)')
+def extract(resources, output, strings_file):
     """Extract all .strings files to translations.yaml."""
     try:
-        sync = I18nSync(resources_path=resources, yaml_path=output)
+        sync = I18nSync(resources_path=resources, yaml_path=output, strings_file=strings_file)
         sync.extract()
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)
@@ -35,10 +37,12 @@ def extract(resources, output):
               help='Input YAML file (default: translations.yaml)')
 @click.option('--resources', '-r', default='Resources',
               help='Path to Resources directory (default: Resources)')
-def apply(input, resources):
+@click.option('--strings-file', '-s', default='Localizable',
+              help='Name of strings file without extension (default: Localizable)')
+def apply(input, resources, strings_file):
     """Apply translations.yaml back to .strings files."""
     try:
-        sync = I18nSync(resources_path=resources, yaml_path=input)
+        sync = I18nSync(resources_path=resources, yaml_path=input, strings_file=strings_file)
         sync.apply()
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)

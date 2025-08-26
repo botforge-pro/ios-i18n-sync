@@ -29,11 +29,16 @@ i18n-sync extract --resources Resources
 # Edit translations.yaml with your favorite editor
 # Then apply changes back:
 i18n-sync apply --resources Resources
+
+# Working with InfoPlist.strings (for Info.plist localization)
+i18n-sync extract --resources Resources --strings-file InfoPlist --output infoplist-translations.yaml
+i18n-sync apply --resources Resources --strings-file InfoPlist --input infoplist-translations.yaml
 ```
 
 Default paths:
 - Resources: `Resources/` directory
 - YAML file: `translations.yaml`
+- Strings file: `Localizable.strings` (use `--strings-file` to specify others)
 
 ## YAML Format
 
