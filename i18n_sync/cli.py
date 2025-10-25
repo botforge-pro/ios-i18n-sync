@@ -13,16 +13,14 @@ def cli():
 
 
 @cli.command()
-@click.option('--resources', '-r', default='Resources', 
+@click.option('--resources', '-r', default='Resources',
               help='Path to Resources directory (default: Resources)')
 @click.option('--output', '-o', default='translations.yaml',
               help='Output YAML file (default: translations.yaml)')
-@click.option('--strings-file', '-s', default='Localizable',
-              help='Name of strings file without extension (default: Localizable)')
-def extract(resources, output, strings_file):
+def extract(resources, output):
     """Extract all .strings files to translations.yaml."""
     try:
-        sync = I18nSync(resources_path=resources, yaml_path=output, strings_file=strings_file)
+        sync = I18nSync(resources_path=resources, yaml_path=output)
         sync.extract()
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)
@@ -37,12 +35,10 @@ def extract(resources, output, strings_file):
               help='Input YAML file (default: translations.yaml)')
 @click.option('--resources', '-r', default='Resources',
               help='Path to Resources directory (default: Resources)')
-@click.option('--strings-file', '-s', default='Localizable',
-              help='Name of strings file without extension (default: Localizable)')
-def apply(input, resources, strings_file):
+def apply(input, resources):
     """Apply translations.yaml back to .strings files."""
     try:
-        sync = I18nSync(resources_path=resources, yaml_path=input, strings_file=strings_file)
+        sync = I18nSync(resources_path=resources, yaml_path=input)
         sync.apply()
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)

@@ -1,202 +1,215 @@
 """Main synchronization class for iOS i18n."""
 
-import os
 import re
 import yaml
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Optional, Set
+
+from .models import TranslationsData
 
 
 class I18nSync:
-    """Synchronize iOS .strings files through YAML."""
-    
-    def __init__(self, resources_path: str = "Resources", yaml_path: str = "translations.yaml", strings_file: str = "Localizable"):
+    """Synchronize iOS .strings files through YAML with sections."""
+
+    def __init__(self, resources_path: str = "Resources", yaml_path: str = "translations.yaml"):
         """
         Initialize the sync tool.
-        
+
         Args:
             resources_path: Path to Resources directory containing *.lproj folders
             yaml_path: Path to the YAML file for translations
-            strings_file: Name of the strings file without extension (e.g., "Localizable" or "InfoPlist")
         """
         self.resources_path = Path(resources_path)
         self.yaml_path = Path(yaml_path)
-        self.strings_file = strings_file
-        self.translations: Dict[str, Dict[str, str]] = {}
-        self.languages: Set[str] = set()
-        
+        self.strings_files = ["Localizable", "InfoPlist"]
+        self.translations = TranslationsData()
+
     def extract(self) -> None:
         """Extract all translations from .strings files to YAML."""
-        self.translations = {}
-        self.languages = set()
-        
-        # Find all .lproj directories
+        self.translations = TranslationsData()
+
+        for lproj_dir in self._get_lproj_directories():
+            self._process_language_directory(lproj_dir)
+
+        self._save_yaml()
+        self._report_statistics()
+
+    def _get_lproj_directories(self):
         lproj_dirs = list(self.resources_path.glob("*.lproj"))
         if not lproj_dirs:
             raise FileNotFoundError(f"No *.lproj directories found in {self.resources_path}")
-        
-        # Process each language
-        for lproj_dir in lproj_dirs:
-            lang = lproj_dir.stem  # e.g., "en", "ru", "de"
-            self.languages.add(lang)
-            
-            strings_file = lproj_dir / f"{self.strings_file}.strings"
-            if not strings_file.exists():
-                print(f"Warning: {strings_file} not found, skipping")
-                continue
-                
-            self._parse_strings_file(strings_file, lang)
-        
-        # Save to YAML
-        self._save_yaml()
-        
-        # Report statistics
-        print(f"Extracted {len(self.translations)} keys from {len(self.languages)} languages")
-        self._report_missing_keys()
-    
+        return lproj_dirs
+
+    def _process_language_directory(self, lproj_dir: Path) -> None:
+        lang = lproj_dir.stem
+
+        for strings_file_name in self.strings_files:
+            strings_file = lproj_dir / f"{strings_file_name}.strings"
+            if strings_file.exists():
+                self._parse_strings_file(strings_file, lang, strings_file_name)
+
     def apply(self) -> None:
         """Apply translations from YAML to .strings files."""
         if not self.yaml_path.exists():
             raise FileNotFoundError(f"YAML file not found: {self.yaml_path}")
-        
-        # Load YAML
+
         self._load_yaml()
-        
-        # Create/update .strings files for each language
-        for lang in self.languages:
-            lproj_dir = self.resources_path / f"{lang}.lproj"
-            lproj_dir.mkdir(exist_ok=True, parents=True)
-            
-            strings_file = lproj_dir / f"{self.strings_file}.strings"
-            self._write_strings_file(strings_file, lang)
-        
-        print(f"Applied {len(self.translations)} keys to {len(self.languages)} languages")
-    
-    def _parse_strings_file(self, file_path: Path, lang: str) -> None:
-        """Parse a .strings file and extract key-value pairs."""
+        languages = self.translations.get_all_languages()
+
+        for section_name in self.strings_files:
+            self._apply_section(section_name, languages)
+
+        print(f"Applied translations to {len(languages)} languages")
+
+    def _apply_section(self, section_name: str, languages: Set[str]) -> None:
+        section = self.translations.sections.get(section_name)
+        if not section:
+            return
+
+        for lang in languages:
+            self._write_section_to_language(section, lang)
+
+    def _write_section_to_language(self, section, lang: str) -> None:
+        lproj_dir = self.resources_path / f"{lang}.lproj"
+        lproj_dir.mkdir(exist_ok=True, parents=True)
+
+        strings_file = lproj_dir / f"{section.name}.strings"
+        self._write_strings_file(strings_file, lang, section)
+
+    def _parse_strings_file(self, file_path: Path, lang: str, section_name: str) -> None:
         content = file_path.read_text(encoding='utf-8')
-        
-        # Regex to match "key" = "value"; pattern
+        section = self.translations.add_section(section_name)
+
         pattern = r'"([^"]+)"\s*=\s*"([^"]*)";\s*(?://.*)?'
-        
         for match in re.finditer(pattern, content):
             key = match.group(1)
             value = match.group(2)
-            
-            if key not in self.translations:
-                self.translations[key] = {}
-            
-            self.translations[key][lang] = value
-    
-    def _write_strings_file(self, file_path: Path, lang: str) -> None:
+            section.add_key(key, lang, value)
+
+    def _write_strings_file(self, file_path: Path, lang: str, section) -> None:
         """Write translations to a .strings file."""
         # Get header if file exists
-        header = self._get_file_header(file_path, lang)
-        
+        header = self._get_file_header(file_path, lang, section.name)
+
         # Build content
-        lines = [header] if header else []
-        
-        for key in sorted(self.translations.keys()):
-            if lang in self.translations[key]:
-                value = self.translations[key][lang]
+        lines = []
+        if header:
+            lines.append(header)
+
+        # Write keys sorted alphabetically
+        for key in sorted(section.keys.keys()):
+            trans_key = section.keys[key]
+            value = trans_key.get_translation(lang)
+            if value is not None:
                 lines.append(f'"{key}" = "{value}";')
             else:
                 # Add empty value for missing translation
                 lines.append(f'"{key}" = "";')
-                print(f"Warning: Missing translation for key '{key}' in language '{lang}'")
-        
+                print(f"Warning: Missing '{section.name}.{key}' for language '{lang}'")
+
         # Write file
         content = '\n'.join(lines)
-        if not content.endswith('\n'):
+        if content and not content.endswith('\n'):
             content += '\n'
-        
+
         file_path.write_text(content, encoding='utf-8')
         print(f"Updated {file_path}")
-    
-    def _get_file_header(self, file_path: Path, lang: str) -> Optional[str]:
+
+    def _get_file_header(self, file_path: Path, lang: str, file_type: str) -> Optional[str]:
         """Extract header comment from existing file or create default."""
         if file_path.exists():
             content = file_path.read_text(encoding='utf-8')
             # Extract everything before first "key" = "value" line
             match = re.search(r'^"[^"]+"\s*=', content, re.MULTILINE)
             if match:
-                header = content[:match.start()].strip()
+                header = content[:match.start()].rstrip()
                 if header:
                     return header
-        
-        # Default header
+
+        # Default header with better language names
         lang_names = {
             'en': 'English',
-            'ru': 'Russian',
-            'de': 'German',
             'es': 'Spanish',
+            'es-419': 'Spanish (Latin America)',
+            'es-MX': 'Spanish (Mexico)',
             'fr': 'French',
+            'de': 'German',
             'it': 'Italian',
+            'nl': 'Dutch',
+            'pt-PT': 'Portuguese (Portugal)',
+            'pt-BR': 'Portuguese (Brazil)',
+            'sv': 'Swedish',
+            'nb': 'Norwegian Bokmål',
+            'da': 'Danish',
+            'fi': 'Finnish',
+            'pl': 'Polish',
+            'el': 'Greek',
+            'ru': 'Russian',
+            'uk': 'Ukrainian',
+            'sr': 'Serbian (Cyrillic)',
+            'sr-Latn': 'Serbian (Latin)',
+            'tr': 'Turkish',
+            'th': 'Thai',
+            'vi': 'Vietnamese',
+            'id': 'Indonesian',
             'ja': 'Japanese',
             'ko': 'Korean',
-            'pt-BR': 'Portuguese (Brazil)',
-            'tr': 'Turkish',
-            'uk': 'Ukrainian',
-            'zh-Hans': 'Chinese Simplified'
+            'zh-Hans': 'Chinese (Simplified)',
+            'zh-Hant': 'Chinese (Traditional)',
+            'zh-HK': 'Chinese (Hong Kong)'
         }
-        
+
         lang_name = lang_names.get(lang, lang)
-        return f"""/* 
-  {self.strings_file}.strings
-  
+        return f"""/*
+  {file_type}.strings
+  QRServe
+
   {lang_name}
-*/
-"""
-    
+*/"""
+
     def _save_yaml(self) -> None:
         """Save translations to YAML file."""
-        # Create regular dict with sorted keys for prettier output
-        output = {}
-        
-        for key in sorted(self.translations.keys()):
-            output[key] = {}
-            # Put 'en' first if it exists
-            if 'en' in self.translations[key]:
-                output[key]['en'] = self.translations[key]['en']
-            
-            # Then other languages alphabetically
-            for lang in sorted(self.translations[key].keys()):
-                if lang != 'en':
-                    output[key][lang] = self.translations[key][lang]
-        
+        data = self.translations.to_yaml_dict()
+
         with open(self.yaml_path, 'w', encoding='utf-8') as f:
-            yaml.dump(output, f, 
-                     default_flow_style=False, 
+            yaml.dump(data, f,
+                     default_flow_style=False,
                      allow_unicode=True,
                      sort_keys=False,
                      width=120)
-        
+
         print(f"Saved translations to {self.yaml_path}")
-    
+
     def _load_yaml(self) -> None:
         """Load translations from YAML file."""
         with open(self.yaml_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-        
-        self.translations = data or {}
-        self.languages = set()
-        
-        # Collect all languages
-        for key, langs in self.translations.items():
-            if isinstance(langs, dict):
-                self.languages.update(langs.keys())
-    
-    def _report_missing_keys(self) -> None:
-        """Report which keys are missing in which languages."""
+            data = yaml.safe_load(f) or {}
+
+        self.translations = TranslationsData.from_yaml_dict(data)
+
+    def _report_statistics(self) -> None:
+        """Report extraction statistics and missing keys."""
+        total_keys = 0
+        languages = self.translations.get_all_languages()
+
+        print("\nExtraction summary:")
+        for section_name, section in self.translations.sections.items():
+            key_count = len(section.keys)
+            total_keys += key_count
+            print(f"  {section_name}: {key_count} keys")
+
+        print(f"\nTotal: {total_keys} keys from {len(languages)} languages")
+
+        # Check for missing translations
         missing_found = False
-        
-        for key in self.translations:
-            missing_langs = self.languages - set(self.translations[key].keys())
-            if missing_langs:
-                if not missing_found:
-                    print("\nMissing translations:")
-                    missing_found = True
-                print(f"  {key}: missing in {', '.join(sorted(missing_langs))}")
-        
+        for section_name, section in self.translations.sections.items():
+            for key, trans_key in section.keys.items():
+                missing_langs = languages - set(trans_key.translations.keys())
+                if missing_langs:
+                    if not missing_found:
+                        print("\nMissing translations:")
+                        missing_found = True
+                    print(f"  {section_name}.{key}: missing in {', '.join(sorted(missing_langs))}")
+
         if not missing_found:
-            print("All keys present in all languages ✓")
+            print("\nAll keys present in all languages ✓")

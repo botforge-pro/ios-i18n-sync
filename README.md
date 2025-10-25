@@ -3,7 +3,7 @@
 
 # iOS i18n Sync
 
-Manage iOS localization files (`.strings`) through a single YAML file. No more editing dozens of separate files for each language.
+Manage iOS localization files (`.strings`) through a single YAML file. No more editing dozens of separate files for each language. Automatically handles both `Localizable.strings` and `InfoPlist.strings`.
 
 ## Why?
 
@@ -11,6 +11,7 @@ Manage iOS localization files (`.strings`) through a single YAML file. No more e
 - 🔍 **Easy to review** - See all languages for each key side by side
 - ✅ **Find missing translations** - Instantly see which keys are missing in which languages
 - 🚀 **Simple workflow** - Extract, edit, apply
+- 🎯 **Smart key routing** - Automatically puts `NS*` and `CF*` keys into InfoPlist.strings
 
 ## Installation
 
@@ -23,43 +24,61 @@ pip install git+https://github.com/botforge-pro/ios-i18n-sync.git
 From your iOS project root:
 
 ```bash
-# Extract all .strings files to translations.yaml
+# Extract all .strings files (both Localizable and InfoPlist) to translations.yaml
 i18n-sync extract --resources Resources
 
 # Edit translations.yaml with your favorite editor
 # Then apply changes back:
 i18n-sync apply --resources Resources
-
-# Working with InfoPlist.strings (for Info.plist localization)
-i18n-sync extract --resources Resources --strings-file InfoPlist --output infoplist-translations.yaml
-i18n-sync apply --resources Resources --strings-file InfoPlist --input infoplist-translations.yaml
 ```
+
+The tool automatically:
+- Extracts from both `Localizable.strings` and `InfoPlist.strings`
+- Organizes translations into sections in YAML
+- Preserves the structure when applying back
 
 Default paths:
 - Resources: `Resources/` directory
 - YAML file: `translations.yaml`
-- Strings file: `Localizable.strings` (use `--strings-file` to specify others)
 
 ## YAML Format
 
+The YAML file is organized into sections corresponding to different .strings files:
+
 ```yaml
-cancel:
-  en: "Cancel"
-  ru: "Отмена"
-  de: "Abbrechen"
-  es: "Cancelar"
-  
-save:
-  en: "Save"
-  ru: "Сохранить"
-  de: "Speichern"
-  es: "Guardar"
+Localizable:
+  cancel:
+    en: "Cancel"
+    ru: "Отмена"
+    de: "Abbrechen"
+    es: "Cancelar"
+
+  save:
+    en: "Save"
+    ru: "Сохранить"
+    de: "Speichern"
+    es: "Guardar"
+
+InfoPlist:
+  CFBundleDisplayName:
+    en: "My App"
+    ru: "Мое приложение"
+    de: "Meine App"
+    es: "Mi aplicación"
+
+  NSCameraUsageDescription:
+    en: "This app needs camera access"
+    ru: "Приложению нужен доступ к камере"
+    de: "Diese App benötigt Kamerazugriff"
+    es: "Esta aplicación necesita acceso a la cámara"
 ```
 
 ## Features
 
+- Handles multiple .strings files (`Localizable.strings`, `InfoPlist.strings`)
+- Organized YAML structure with sections
 - Preserves file headers (comments at the top of .strings files)
-- Sorts keys alphabetically in YAML
+- Sorts keys alphabetically within sections
 - Reports missing translations during extract
 - Handles Unicode correctly
 
