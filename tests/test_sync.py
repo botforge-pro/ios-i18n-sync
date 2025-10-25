@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 import yaml
 from i18n_sync import I18nSync
+from i18n_sync.models import TranslationsData
 
 
 @pytest.fixture
@@ -81,21 +82,22 @@ class TestExtract:
         with open(yaml_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
         
-        assert "cancel" in data
-        assert data["cancel"]["en"] == "Cancel"
-        assert data["cancel"]["ru"] == "Отмена"
-        assert data["cancel"]["de"] == "Abbrechen"
-        
-        assert "save" in data
-        assert data["save"]["en"] == "Save"
-        assert data["save"]["ru"] == "Сохранить"
-        assert data["save"]["de"] == "Speichern"
-        
-        assert "delete" in data
-        assert data["delete"]["en"] == "Delete"
-        assert data["delete"]["de"] == "Löschen"
+        assert "Localizable" in data
+        assert "cancel" in data["Localizable"]
+        assert data["Localizable"]["cancel"]["en"] == "Cancel"
+        assert data["Localizable"]["cancel"]["ru"] == "Отмена"
+        assert data["Localizable"]["cancel"]["de"] == "Abbrechen"
+
+        assert "save" in data["Localizable"]
+        assert data["Localizable"]["save"]["en"] == "Save"
+        assert data["Localizable"]["save"]["ru"] == "Сохранить"
+        assert data["Localizable"]["save"]["de"] == "Speichern"
+
+        assert "delete" in data["Localizable"]
+        assert data["Localizable"]["delete"]["en"] == "Delete"
+        assert data["Localizable"]["delete"]["de"] == "Löschen"
         # Russian is missing delete key
-        assert "ru" not in data["delete"]
+        assert "ru" not in data["Localizable"]["delete"]
     
     def test_extract_no_resources(self, temp_dir):
         """Test extraction fails gracefully when no resources found."""
@@ -121,7 +123,7 @@ class TestExtract:
         with open(yaml_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
         
-        assert data == {} or data is None
+        assert data == {"Localizable": {}} or data is None
 
 
 class TestApply:
@@ -129,23 +131,19 @@ class TestApply:
     
     def test_apply_basic(self, temp_dir):
         """Test basic apply functionality."""
-        # Create YAML file
         yaml_path = temp_dir / "translations.yaml"
-        yaml_data = {
-            "cancel": {
-                "en": "Cancel",
-                "ru": "Отмена",
-                "de": "Abbrechen"
-            },
-            "save": {
-                "en": "Save",
-                "ru": "Сохранить",
-                "de": "Speichern"
-            }
-        }
-        
+
+        trans_data = TranslationsData()
+        section = trans_data.add_section("Localizable")
+        section.add_key("cancel", "en", "Cancel")
+        section.add_key("cancel", "ru", "Отмена")
+        section.add_key("cancel", "de", "Abbrechen")
+        section.add_key("save", "en", "Save")
+        section.add_key("save", "ru", "Сохранить")
+        section.add_key("save", "de", "Speichern")
+
         with open(yaml_path, 'w', encoding='utf-8') as f:
-            yaml.dump(yaml_data, f, allow_unicode=True)
+            yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
         
         # Apply
         resources = temp_dir / "Resources"
@@ -175,23 +173,19 @@ class TestApply:
     
     def test_apply_missing_translation(self, temp_dir):
         """Test apply handles missing translations gracefully."""
-        # Create YAML with missing translations
         yaml_path = temp_dir / "translations.yaml"
-        yaml_data = {
-            "cancel": {
-                "en": "Cancel",
-                "ru": "Отмена",
-                "de": "Abbrechen"
-            },
-            "save": {
-                "en": "Save",
-                "ru": "Сохранить"
-                # Missing German translation
-            }
-        }
-        
+
+        trans_data = TranslationsData()
+        section = trans_data.add_section("Localizable")
+        section.add_key("cancel", "en", "Cancel")
+        section.add_key("cancel", "ru", "Отмена")
+        section.add_key("cancel", "de", "Abbrechen")
+        section.add_key("save", "en", "Save")
+        section.add_key("save", "ru", "Сохранить")
+        # Missing German translation for "save"
+
         with open(yaml_path, 'w', encoding='utf-8') as f:
-            yaml.dump(yaml_data, f, allow_unicode=True)
+            yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
         
         resources = temp_dir / "Resources"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
@@ -228,13 +222,13 @@ class TestRoundTrip:
         # Modify to add missing translation
         with open(yaml_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
-        
+
         # Add missing Russian translation for "delete"
-        if "delete" in data:
-            data["delete"]["ru"] = "Удалить"
-        
+        if "Localizable" in data and "delete" in data["Localizable"]:
+            data["Localizable"]["delete"]["ru"] = "Удалить"
+
         with open(yaml_path, 'w', encoding='utf-8') as f:
-            yaml.dump(data, f, allow_unicode=True)
+            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
         
         # Apply back
         sync.apply()
