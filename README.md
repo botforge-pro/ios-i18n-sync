@@ -1,5 +1,5 @@
 ![Tests](https://github.com/botforge-pro/ios-i18n-sync/workflows/Tests/badge.svg)
-[![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
 
 # iOS i18n Sync
 
