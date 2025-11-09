@@ -101,7 +101,9 @@ class I18nSync:
             trans_key = section.keys[key]
             value = trans_key.get_translation(lang)
             if value is not None:
-                lines.append(f'"{key}" = "{value}";')
+                # Escape backslashes and quotes in value
+                escaped_value = value.replace('\\', '\\\\').replace('"', '\\"')
+                lines.append(f'"{key}" = "{escaped_value}";')
             else:
                 # Add empty value for missing translation
                 lines.append(f'"{key}" = "";')

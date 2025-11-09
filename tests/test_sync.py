@@ -128,7 +128,40 @@ class TestExtract:
 
 class TestApply:
     """Test applying YAML to .strings files."""
-    
+
+    def test_apply_escapes_quotes(self, temp_dir):
+        """Test that quotes inside strings are properly escaped."""
+        yaml_path = temp_dir / "translations.yaml"
+
+        trans_data = TranslationsData()
+        section = trans_data.add_section("Localizable")
+        section.add_key("reportCurrent", "en", 'Report "%@"')
+        section.add_key("reportCurrent", "es", 'Informar "%@"')
+        section.add_key("reportPrevious", "en", 'Report previous "%@"')
+        section.add_key("reportPrevious", "es", 'Informar anterior "%@"')
+
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
+
+        # Apply
+        resources = temp_dir / "Resources"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.apply()
+
+        # Check English file has properly escaped quotes
+        en_file = resources / "en.lproj" / "Localizable.strings"
+        assert en_file.exists()
+        content = en_file.read_text(encoding='utf-8')
+        assert '"reportCurrent" = "Report \\"%@\\"";' in content
+        assert '"reportPrevious" = "Report previous \\"%@\\"";' in content
+
+        # Check Spanish file
+        es_file = resources / "es.lproj" / "Localizable.strings"
+        assert es_file.exists()
+        content = es_file.read_text(encoding='utf-8')
+        assert '"reportCurrent" = "Informar \\"%@\\"";' in content
+        assert '"reportPrevious" = "Informar anterior \\"%@\\"";' in content
+
     def test_apply_basic(self, temp_dir):
         """Test basic apply functionality."""
         yaml_path = temp_dir / "translations.yaml"
