@@ -80,11 +80,18 @@ class I18nSync:
         content = file_path.read_text(encoding='utf-8')
         section = self.translations.add_section(section_name)
 
-        pattern = r'"([^"]+)"\s*=\s*"([^"]*)";\s*(?://.*)?'
+        pattern = r'"([^"]+)"\s*=\s*"((?:[^"\\]|\\.)*)";\s*(?://.*)?'
         for match in re.finditer(pattern, content):
             key = match.group(1)
-            value = match.group(2)
+            value_raw = match.group(2)
+            value = self._unescape_strings_value(value_raw)
             section.add_key(key, lang, value)
+
+    def _unescape_strings_value(self, value: str) -> str:
+        return value.replace('\\"', '"').replace('\\\\', '\\')
+
+    def _escape_strings_value(self, value: str) -> str:
+        return value.replace('\\', '\\\\').replace('"', '\\"')
 
     def _write_strings_file(self, file_path: Path, lang: str, section) -> None:
         """Write translations to a .strings file."""
@@ -101,8 +108,7 @@ class I18nSync:
             trans_key = section.keys[key]
             value = trans_key.get_translation(lang)
             if value is not None:
-                # Escape backslashes and quotes in value
-                escaped_value = value.replace('\\', '\\\\').replace('"', '\\"')
+                escaped_value = self._escape_strings_value(value)
                 lines.append(f'"{key}" = "{escaped_value}";')
             else:
                 # Add empty value for missing translation

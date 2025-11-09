@@ -69,7 +69,35 @@ def sample_resources(temp_dir):
 
 class TestExtract:
     """Test extraction from .strings to YAML."""
-    
+
+    def test_extract_escaped_quotes(self, temp_dir):
+        """Test that escaped quotes inside strings are properly extracted."""
+        resources = temp_dir / "Resources"
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+        # String with escaped quotes inside
+        (en_dir / "Localizable.strings").write_text("""/*
+  Localizable.strings
+
+  English
+*/
+"reportCurrent" = "Report \\"%@\\"";
+"reportPrevious" = "Report previous \\"%@\\"";
+""", encoding='utf-8')
+
+        yaml_path = temp_dir / "translations.yaml"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.extract()
+
+        with open(yaml_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+
+        assert "Localizable" in data
+        assert "reportCurrent" in data["Localizable"]
+        assert data["Localizable"]["reportCurrent"]["en"] == 'Report "%@"'
+        assert "reportPrevious" in data["Localizable"]
+        assert data["Localizable"]["reportPrevious"]["en"] == 'Report previous "%@"'
+
     def test_extract_basic(self, sample_resources, temp_dir):
         """Test basic extraction functionality."""
         yaml_path = temp_dir / "translations.yaml"
