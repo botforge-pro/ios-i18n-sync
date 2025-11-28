@@ -302,3 +302,162 @@ class TestRoundTrip:
         # Original keys still there
         assert '"cancel" = "Отмена";' in content
         assert '"save" = "Сохранить";' in content
+
+
+class TestApplyAndroid:
+    """Test applying YAML to Android strings.xml files."""
+
+    def test_apply_android_basic(self, temp_dir):
+        """Test basic Android strings.xml generation."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "cancel": {"en": "Cancel", "ru": "Отмена", "de": "Abbrechen"},
+                "save": {"en": "Save", "ru": "Сохранить", "de": "Speichern"},
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        # Check default (English) in values/
+        default_file = res_path / "values" / "strings.xml"
+        assert default_file.exists()
+        content = default_file.read_text(encoding='utf-8')
+        assert '<?xml version="1.0" encoding="utf-8"?>' in content
+        assert '<string name="cancel">Cancel</string>' in content
+        assert '<string name="save">Save</string>' in content
+
+        # Check Russian in values-ru/
+        ru_file = res_path / "values-ru" / "strings.xml"
+        assert ru_file.exists()
+        content = ru_file.read_text(encoding='utf-8')
+        assert '<string name="cancel">Отмена</string>' in content
+        assert '<string name="save">Сохранить</string>' in content
+
+        # Check German in values-de/
+        de_file = res_path / "values-de" / "strings.xml"
+        assert de_file.exists()
+        content = de_file.read_text(encoding='utf-8')
+        assert '<string name="cancel">Abbrechen</string>' in content
+        assert '<string name="save">Speichern</string>' in content
+
+    def test_apply_android_language_mapping(self, temp_dir):
+        """Test iOS to Android language code mapping."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "hello": {
+                    "en": "Hello",
+                    "zh-Hans": "你好",
+                    "zh-Hant": "您好",
+                    "zh-HK": "你好",
+                    "pt-BR": "Olá",
+                    "pt-PT": "Olá",
+                    "es-419": "Hola",
+                    "es-MX": "Hola",
+                    "sr-Latn": "Zdravo",
+                    "nb": "Hei",
+                }
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        # Check language code mappings
+        assert (res_path / "values" / "strings.xml").exists()  # en -> values/
+        assert (res_path / "values-zh-rCN" / "strings.xml").exists()  # zh-Hans
+        assert (res_path / "values-zh-rTW" / "strings.xml").exists()  # zh-Hant
+        assert (res_path / "values-zh-rHK" / "strings.xml").exists()  # zh-HK
+        assert (res_path / "values-pt-rBR" / "strings.xml").exists()  # pt-BR
+        assert (res_path / "values-pt-rPT" / "strings.xml").exists()  # pt-PT
+        assert (res_path / "values-b+es+419" / "strings.xml").exists()  # es-419
+        assert (res_path / "values-es-rMX" / "strings.xml").exists()  # es-MX
+        assert (res_path / "values-b+sr+Latn" / "strings.xml").exists()  # sr-Latn
+        assert (res_path / "values-nb" / "strings.xml").exists()  # nb stays nb
+
+    def test_apply_android_xml_escaping(self, temp_dir):
+        """Test proper XML escaping in Android strings."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "apostrophe": {"en": "It's working"},
+                "ampersand": {"en": "Tom & Jerry"},
+                "quotes": {"en": 'Say "Hello"'},
+                "less_than": {"en": "1 < 2"},
+                "greater_than": {"en": "2 > 1"},
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
+        assert "<string name=\"apostrophe\">It\\'s working</string>" in content
+        assert "<string name=\"ampersand\">Tom &amp; Jerry</string>" in content
+        assert '<string name="quotes">Say \\"Hello\\"</string>' in content
+        assert "<string name=\"less_than\">1 &lt; 2</string>" in content
+        assert "<string name=\"greater_than\">2 &gt; 1</string>" in content
+
+    def test_apply_android_missing_translation(self, temp_dir):
+        """Test that missing translations are skipped (not included in that language file)."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "cancel": {"en": "Cancel", "ru": "Отмена"},
+                "save": {"en": "Save"},  # Missing Russian
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        # Russian file should only have cancel, not save
+        ru_content = (res_path / "values-ru" / "strings.xml").read_text(encoding='utf-8')
+        assert '<string name="cancel">Отмена</string>' in ru_content
+        assert 'save' not in ru_content
+
+    def test_apply_android_no_yaml(self, temp_dir):
+        """Test apply_android fails gracefully when YAML doesn't exist."""
+        res_path = temp_dir / "res"
+        yaml_path = temp_dir / "nonexistent.yaml"
+        sync = I18nSync(yaml_path=yaml_path)
+
+        with pytest.raises(FileNotFoundError):
+            sync.apply_android(res_path=res_path)
+
+    def test_apply_android_sorted_keys(self, temp_dir):
+        """Test that keys are sorted alphabetically in output."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "zebra": {"en": "Zebra"},
+                "apple": {"en": "Apple"},
+                "mango": {"en": "Mango"},
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
+        apple_pos = content.find("apple")
+        mango_pos = content.find("mango")
+        zebra_pos = content.find("zebra")
+        assert apple_pos < mango_pos < zebra_pos

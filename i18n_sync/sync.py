@@ -8,6 +8,50 @@ from typing import Optional, Set
 from .models import TranslationsData
 
 
+# iOS to Android language code mapping
+# Full list for all App Store supported locales
+# See: https://developer.apple.com/help/app-store-connect/reference/app-store-localizations/
+IOS_TO_ANDROID_LANG = {
+    # Chinese variants
+    "zh-Hans": "zh-rCN",       # Chinese Simplified
+    "zh-Hant": "zh-rTW",       # Chinese Traditional
+    "zh-HK": "zh-rHK",         # Chinese Hong Kong
+
+    # Portuguese variants
+    "pt-BR": "pt-rBR",         # Portuguese Brazil
+    "pt-PT": "pt-rPT",         # Portuguese Portugal
+
+    # Spanish variants
+    "es-419": "b+es+419",      # Spanish Latin America
+    "es-MX": "es-rMX",         # Spanish Mexico
+
+    # English variants
+    "en-AU": "en-rAU",         # English Australia
+    "en-CA": "en-rCA",         # English Canada
+    "en-GB": "en-rGB",         # English United Kingdom
+    "en-US": "en-rUS",         # English United States
+
+    # French variants
+    "fr-CA": "fr-rCA",         # French Canada
+
+    # Serbian variants
+    "sr-Latn": "b+sr+Latn",    # Serbian Latin
+
+    # Norwegian (iOS uses 'nb' for Bokmål, Android accepts both)
+    # "nb" stays "nb" - no mapping needed
+
+    # Hebrew (iOS may use 'he', Android uses 'iw')
+    "he": "iw",
+
+    # Indonesian (iOS may use 'id', Android historically used 'in')
+    # Modern Android accepts 'id', but 'in' for compatibility
+    # "id": "in",  # Uncomment if targeting old Android versions
+
+    # Yiddish
+    "yi": "ji",
+}
+
+
 class I18nSync:
     """Synchronize iOS .strings files through YAML with sections."""
 
@@ -221,3 +265,68 @@ class I18nSync:
 
         if not missing_found:
             print("\nAll keys present in all languages ✓")
+
+    # ==================== Android support ====================
+
+    def apply_android(self, res_path: str = "app/src/main/res", default_lang: str = "en") -> None:
+        """Apply translations from YAML to Android strings.xml files."""
+        if not self.yaml_path.exists():
+            raise FileNotFoundError(f"YAML file not found: {self.yaml_path}")
+
+        self._load_yaml()
+        res_path = Path(res_path)
+        languages = self.translations.get_all_languages()
+
+        for lang in languages:
+            self._write_android_strings(res_path, lang, default_lang)
+
+        print(f"Applied translations to {len(languages)} Android languages")
+
+    def _write_android_strings(self, res_path: Path, lang: str, default_lang: str) -> None:
+        """Write strings.xml for a specific language."""
+        # Determine folder name
+        if lang == default_lang:
+            folder_name = "values"
+        else:
+            android_lang = IOS_TO_ANDROID_LANG.get(lang, lang)
+            folder_name = f"values-{android_lang}"
+
+        values_dir = res_path / folder_name
+        values_dir.mkdir(parents=True, exist_ok=True)
+
+        strings_file = values_dir / "strings.xml"
+        self._write_android_xml(strings_file, lang)
+
+    def _write_android_xml(self, file_path: Path, lang: str) -> None:
+        """Write Android strings.xml file."""
+        lines = ['<?xml version="1.0" encoding="utf-8"?>', "<resources>"]
+
+        # Collect all keys from all sections for this language
+        all_keys = {}
+        for section in self.translations.sections.values():
+            for key, trans_key in section.keys.items():
+                value = trans_key.get_translation(lang)
+                if value is not None:
+                    all_keys[key] = value
+
+        # Write keys sorted alphabetically
+        for key in sorted(all_keys.keys()):
+            value = all_keys[key]
+            escaped_value = self._escape_android_xml(value)
+            lines.append(f'    <string name="{key}">{escaped_value}</string>')
+
+        lines.append("</resources>")
+
+        content = "\n".join(lines) + "\n"
+        file_path.write_text(content, encoding="utf-8")
+        print(f"Updated {file_path}")
+
+    def _escape_android_xml(self, value: str) -> str:
+        """Escape special characters for Android XML."""
+        # Order matters: ampersand first
+        value = value.replace("&", "&amp;")
+        value = value.replace("<", "&lt;")
+        value = value.replace(">", "&gt;")
+        value = value.replace("'", "\\'")
+        value = value.replace('"', '\\"')
+        return value

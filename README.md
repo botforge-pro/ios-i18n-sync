@@ -21,6 +21,8 @@ pip install git+https://github.com/botforge-pro/ios-i18n-sync.git
 
 ## Usage
 
+### iOS
+
 From your iOS project root:
 
 ```bash
@@ -31,6 +33,27 @@ i18n-sync extract --resources Resources
 # Then apply changes back:
 i18n-sync apply --resources Resources
 ```
+
+### Android
+
+Generate Android `strings.xml` files from the same YAML:
+
+```bash
+# Generate strings.xml for all languages
+i18n-sync apply-android --input translations.yaml --res app/src/main/res
+```
+
+This creates the proper Android resource structure:
+```
+res/
+├── values/strings.xml           # Default (English)
+├── values-ru/strings.xml        # Russian
+├── values-zh-rCN/strings.xml    # Chinese Simplified
+├── values-pt-rBR/strings.xml    # Portuguese Brazil
+└── ...
+```
+
+Language codes are automatically converted from iOS to Android format (e.g., `zh-Hans` → `zh-rCN`, `pt-BR` → `pt-rBR`).
 
 The tool automatically:
 - Extracts from both `Localizable.strings` and `InfoPlist.strings`
