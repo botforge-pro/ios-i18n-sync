@@ -461,3 +461,38 @@ class TestApplyAndroid:
         mango_pos = content.find("mango")
         zebra_pos = content.find("zebra")
         assert apple_pos < mango_pos < zebra_pos
+
+    @pytest.mark.parametrize("ios_format,android_format", [
+        # Single %@ -> %s
+        ("%@ files", "%s files"),
+        # Multiple format specifiers get positional args
+        ("%d files of %d", "%1$d files of %2$d"),
+        ("%d files of %d (%@)", "%1$d files of %2$d (%3$s)"),
+        # Mixed types
+        ("%@ has %d items", "%1$s has %2$d items"),
+        # Already positional - keep as is
+        ("%1$d of %2$d", "%1$d of %2$d"),
+        # Single specifier - no positional needed
+        ("%d items", "%d items"),
+        ("%@ name", "%s name"),
+        # Float
+        ("%.2f MB", "%.2f MB"),
+        ("%d of %d (%.1f%%)", "%1$d of %2$d (%3$.1f%%)"),
+    ])
+    def test_apply_android_format_specifiers(self, temp_dir, ios_format, android_format):
+        """Test iOS format specifiers are converted to Android format."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "testKey": {"en": ios_format},
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
+        assert f'<string name="testKey">{android_format}</string>' in content

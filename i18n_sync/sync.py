@@ -323,6 +323,8 @@ class I18nSync:
 
     def _escape_android_xml(self, value: str) -> str:
         """Escape special characters for Android XML."""
+        # Convert iOS format specifiers to Android
+        value = self._convert_format_specifiers(value)
         # Order matters: ampersand first
         value = value.replace("&", "&amp;")
         value = value.replace("<", "&lt;")
@@ -330,3 +332,44 @@ class I18nSync:
         value = value.replace("'", "\\'")
         value = value.replace('"', '\\"')
         return value
+
+    def _convert_format_specifiers(self, value: str) -> str:
+        """Convert iOS format specifiers to Android format.
+
+        - %@ -> %s (iOS object placeholder to Android string)
+        - Multiple specifiers get positional args: %d %d -> %1$d %2$d
+        - Already positional specifiers are kept as-is
+        """
+        # Pattern to match format specifiers (excluding %% which is escaped percent)
+        # Matches: %@, %d, %f, %.2f, %ld, etc. but not already positional like %1$d
+        pattern = r'%(?!\d+\$)(\.\d+)?(@|[dfiulxXoOeEgGsScCpPaAbBhHnN]|l[diu])'
+
+        # First, find all format specifiers
+        matches = list(re.finditer(pattern, value))
+
+        if not matches:
+            return value
+
+        # If only one specifier, just convert %@ to %s without positional
+        if len(matches) == 1:
+            return re.sub(pattern, lambda m: f'%{m.group(1) or ""}{self._ios_to_android_type(m.group(2))}', value)
+
+        # Multiple specifiers: add positional arguments
+        result = value
+        offset = 0
+        for i, match in enumerate(matches, 1):
+            start = match.start() + offset
+            end = match.end() + offset
+            precision = match.group(1) or ""
+            type_spec = self._ios_to_android_type(match.group(2))
+            replacement = f'%{i}${precision}{type_spec}'
+            result = result[:start] + replacement + result[end:]
+            offset += len(replacement) - (match.end() - match.start())
+
+        return result
+
+    def _ios_to_android_type(self, ios_type: str) -> str:
+        """Convert iOS type specifier to Android."""
+        if ios_type == '@':
+            return 's'
+        return ios_type
