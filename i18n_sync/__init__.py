@@ -1,6 +1,6 @@
 """iOS i18n sync tool for managing .strings files through YAML."""
 
-__version__ = "0.1.0"
+__version__ = "0.6.0"
 
 from .sync import I18nSync
 

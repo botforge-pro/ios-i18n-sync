@@ -496,3 +496,151 @@ class TestApplyAndroid:
 
         content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
         assert f'<string name="testKey">{android_format}</string>' in content
+
+
+class TestStringsdict:
+    """Test parsing iOS .stringsdict files and generating Android plurals."""
+
+    def test_extract_stringsdict(self, temp_dir):
+        """Test extraction of plurals from .stringsdict files."""
+        resources = temp_dir / "Resources"
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+
+        # Create English stringsdict
+        (en_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>flowTimeHours</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>%#@hours@</string>
+        <key>hours</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>d</string>
+            <key>one</key>
+            <string>%d hour</string>
+            <key>other</key>
+            <string>%d hours</string>
+        </dict>
+    </dict>
+</dict>
+</plist>""", encoding='utf-8')
+
+        # Create Russian stringsdict with more plural forms
+        ru_dir = resources / "ru.lproj"
+        ru_dir.mkdir(parents=True)
+        (ru_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>flowTimeHours</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>%#@hours@</string>
+        <key>hours</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>d</string>
+            <key>one</key>
+            <string>%d час</string>
+            <key>few</key>
+            <string>%d часа</string>
+            <key>many</key>
+            <string>%d часов</string>
+            <key>other</key>
+            <string>%d часов</string>
+        </dict>
+    </dict>
+</dict>
+</plist>""", encoding='utf-8')
+
+        yaml_path = temp_dir / "translations.yaml"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.extract()
+
+        with open(yaml_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+
+        # Check plurals section exists
+        assert "Plurals" in data
+        assert "flowTimeHours" in data["Plurals"]
+
+        # Check English plurals
+        en_plurals = data["Plurals"]["flowTimeHours"]["en"]
+        assert en_plurals["one"] == "%d hour"
+        assert en_plurals["other"] == "%d hours"
+
+        # Check Russian plurals (has more forms)
+        ru_plurals = data["Plurals"]["flowTimeHours"]["ru"]
+        assert ru_plurals["one"] == "%d час"
+        assert ru_plurals["few"] == "%d часа"
+        assert ru_plurals["many"] == "%d часов"
+        assert ru_plurals["other"] == "%d часов"
+
+    def test_apply_android_plurals(self, temp_dir):
+        """Test generating Android plurals XML from YAML."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "cancel": {"en": "Cancel", "ru": "Отмена"},
+            },
+            "Plurals": {
+                "flowTimeHours": {
+                    "en": {"one": "%d hour", "other": "%d hours"},
+                    "ru": {"one": "%d час", "few": "%d часа", "many": "%d часов", "other": "%d часов"},
+                },
+                "flowTimeMinutes": {
+                    "en": {"one": "%d minute", "other": "%d minutes"},
+                    "ru": {"one": "%d минуту", "few": "%d минуты", "many": "%d минут", "other": "%d минут"},
+                },
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        # Check English plurals
+        en_content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
+        assert '<plurals name="flowTimeHours">' in en_content
+        assert '<item quantity="one">%d hour</item>' in en_content
+        assert '<item quantity="other">%d hours</item>' in en_content
+        assert '<plurals name="flowTimeMinutes">' in en_content
+
+        # Check Russian plurals (has few/many)
+        ru_content = (res_path / "values-ru" / "strings.xml").read_text(encoding='utf-8')
+        assert '<plurals name="flowTimeHours">' in ru_content
+        assert '<item quantity="one">%d час</item>' in ru_content
+        assert '<item quantity="few">%d часа</item>' in ru_content
+        assert '<item quantity="many">%d часов</item>' in ru_content
+        assert '<item quantity="other">%d часов</item>' in ru_content
+
+    def test_apply_android_plurals_escaping(self, temp_dir):
+        """Test that plurals values are properly XML escaped."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Plurals": {
+                "testPlural": {
+                    "en": {"one": "%d file's size", "other": "%d files' sizes"},
+                },
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
+        assert "<item quantity=\"one\">%d file\\'s size</item>" in content
+        assert "<item quantity=\"other\">%d files\\' sizes</item>" in content

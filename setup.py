@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="ios-i18n-sync",
-    version="0.5.0",
+    version="0.6.0",
     author="botforge.pro",
     description="iOS localization sync tool for .strings files",
     long_description=long_description,

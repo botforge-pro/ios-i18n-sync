@@ -1,5 +1,6 @@
 """Main synchronization class for iOS i18n."""
 
+import plistlib
 import re
 import yaml
 from pathlib import Path
@@ -67,10 +68,12 @@ class I18nSync:
         self.yaml_path = Path(yaml_path)
         self.strings_files = ["Localizable", "InfoPlist"]
         self.translations = TranslationsData()
+        self.plurals = {}  # {key: {lang: {quantity: value}}}
 
     def extract(self) -> None:
-        """Extract all translations from .strings files to YAML."""
+        """Extract all translations from .strings and .stringsdict files to YAML."""
         self.translations = TranslationsData()
+        self.plurals = {}
 
         for lproj_dir in self._get_lproj_directories():
             self._process_language_directory(lproj_dir)
@@ -91,6 +94,11 @@ class I18nSync:
             strings_file = lproj_dir / f"{strings_file_name}.strings"
             if strings_file.exists():
                 self._parse_strings_file(strings_file, lang, strings_file_name)
+
+            # Also check for stringsdict (plurals)
+            stringsdict_file = lproj_dir / f"{strings_file_name}.stringsdict"
+            if stringsdict_file.exists():
+                self._parse_stringsdict_file(stringsdict_file, lang)
 
     def apply(self) -> None:
         """Apply translations from YAML to .strings files."""
@@ -130,6 +138,40 @@ class I18nSync:
             value_raw = match.group(2)
             value = self._unescape_strings_value(value_raw)
             section.add_key(key, lang, value)
+
+    def _parse_stringsdict_file(self, file_path: Path, lang: str) -> None:
+        """Parse iOS .stringsdict file and extract plurals."""
+        with open(file_path, 'rb') as f:
+            plist = plistlib.load(f)
+
+        # Each key in plist is a plural key
+        for key, entry in plist.items():
+            if not isinstance(entry, dict):
+                continue
+
+            # Find the plural variable (e.g., "hours" in %#@hours@)
+            format_key = entry.get("NSStringLocalizedFormatKey", "")
+            # Extract variable name from %#@varname@
+            match = re.search(r'%#@(\w+)@', format_key)
+            if not match:
+                continue
+
+            var_name = match.group(1)
+            plural_dict = entry.get(var_name, {})
+
+            if plural_dict.get("NSStringFormatSpecTypeKey") != "NSStringPluralRuleType":
+                continue
+
+            # Extract plural forms
+            plural_forms = {}
+            for quantity in ["zero", "one", "two", "few", "many", "other"]:
+                if quantity in plural_dict:
+                    plural_forms[quantity] = plural_dict[quantity]
+
+            if plural_forms:
+                if key not in self.plurals:
+                    self.plurals[key] = {}
+                self.plurals[key][lang] = plural_forms
 
     def _unescape_strings_value(self, value: str) -> str:
         return value.replace('\\"', '"').replace('\\\\', '\\')
@@ -223,6 +265,20 @@ class I18nSync:
         """Save translations to YAML file."""
         data = self.translations.to_yaml_dict()
 
+        # Add plurals section if we have any
+        if self.plurals:
+            plurals_data = {}
+            for key in sorted(self.plurals.keys()):
+                plurals_data[key] = {}
+                langs = self.plurals[key]
+                # Sort with 'en' first
+                if 'en' in langs:
+                    plurals_data[key]['en'] = langs['en']
+                for lang in sorted(langs.keys()):
+                    if lang != 'en':
+                        plurals_data[key][lang] = langs[lang]
+            data["Plurals"] = plurals_data
+
         with open(self.yaml_path, 'w', encoding='utf-8') as f:
             yaml.dump(data, f,
                      default_flow_style=False,
@@ -236,6 +292,9 @@ class I18nSync:
         """Load translations from YAML file."""
         with open(self.yaml_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f) or {}
+
+        # Extract plurals section before creating TranslationsData
+        self.plurals = data.pop("Plurals", {})
 
         self.translations = TranslationsData.from_yaml_dict(data)
 
@@ -275,7 +334,11 @@ class I18nSync:
 
         self._load_yaml()
         res_path = Path(res_path)
+
+        # Get all languages from both strings and plurals
         languages = self.translations.get_all_languages()
+        for plural_key, lang_data in self.plurals.items():
+            languages.update(lang_data.keys())
 
         for lang in languages:
             self._write_android_strings(res_path, lang, default_lang)
@@ -309,11 +372,24 @@ class I18nSync:
                 if value is not None:
                     all_keys[key] = value
 
-        # Write keys sorted alphabetically
+        # Write string keys sorted alphabetically
         for key in sorted(all_keys.keys()):
             value = all_keys[key]
             escaped_value = self._escape_android_xml(value)
             lines.append(f'    <string name="{key}">{escaped_value}</string>')
+
+        # Write plurals for this language
+        for plural_key in sorted(self.plurals.keys()):
+            lang_data = self.plurals[plural_key]
+            if lang in lang_data:
+                forms = lang_data[lang]
+                lines.append(f'    <plurals name="{plural_key}">')
+                # Android quantity order: zero, one, two, few, many, other
+                for quantity in ["zero", "one", "two", "few", "many", "other"]:
+                    if quantity in forms:
+                        escaped_value = self._escape_android_xml(forms[quantity])
+                        lines.append(f'        <item quantity="{quantity}">{escaped_value}</item>')
+                lines.append('    </plurals>')
 
         lines.append("</resources>")
 
