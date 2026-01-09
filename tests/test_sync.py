@@ -644,3 +644,84 @@ class TestStringsdict:
         content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
         assert "<item quantity=\"one\">%d file\\'s size</item>" in content
         assert "<item quantity=\"other\">%d files\\' sizes</item>" in content
+
+
+class TestLocalesConfig:
+    """Test generating Android locales_config.xml for per-app language support."""
+
+    def test_generates_locales_config(self, temp_dir):
+        """Test that locales_config.xml is generated with all languages."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "hello": {"en": "Hello", "ru": "Привет", "de": "Hallo"},
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        # Check locales_config.xml exists
+        config_file = res_path / "xml" / "locales_config.xml"
+        assert config_file.exists()
+
+        content = config_file.read_text(encoding='utf-8')
+        assert '<?xml version="1.0" encoding="utf-8"?>' in content
+        assert '<locale-config xmlns:android="http://schemas.android.com/apk/res/android">' in content
+        assert '<locale android:name="de" />' in content
+        assert '<locale android:name="en" />' in content
+        assert '<locale android:name="ru" />' in content
+        assert '</locale-config>' in content
+
+    def test_locales_config_sorted_alphabetically(self, temp_dir):
+        """Test that locales are sorted alphabetically."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "hello": {"zh-Hans": "你好", "en": "Hello", "fr": "Bonjour", "ar": "مرحبا"},
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        content = (res_path / "xml" / "locales_config.xml").read_text(encoding='utf-8')
+        ar_pos = content.find('android:name="ar"')
+        en_pos = content.find('android:name="en"')
+        fr_pos = content.find('android:name="fr"')
+        zh_pos = content.find('android:name="zh-CN"')  # zh-Hans maps to zh-CN
+        assert ar_pos < en_pos < fr_pos < zh_pos
+
+    def test_locales_config_language_mapping(self, temp_dir):
+        """Test that iOS language codes are mapped to Android format in locales_config."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "hello": {
+                    "en": "Hello",
+                    "zh-Hans": "你好",
+                    "zh-Hant": "您好",
+                    "pt-BR": "Olá",
+                    "sr-Latn": "Zdravo",
+                },
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        content = (res_path / "xml" / "locales_config.xml").read_text(encoding='utf-8')
+        assert '<locale android:name="en" />' in content
+        assert '<locale android:name="zh-CN" />' in content  # zh-Hans -> zh-CN
+        assert '<locale android:name="zh-TW" />' in content  # zh-Hant -> zh-TW
+        assert '<locale android:name="pt-BR" />' in content
+        assert '<locale android:name="sr-Latn" />' in content

@@ -13,7 +13,7 @@ from .models import TranslationsData
 # Full list for all App Store supported locales
 # See: https://developer.apple.com/help/app-store-connect/reference/app-store-localizations/
 IOS_TO_ANDROID_LANG = {
-    # Chinese variants
+    # Chinese variants (use region format for locales_config.xml compatibility)
     "zh-Hans": "zh-rCN",       # Chinese Simplified
     "zh-Hant": "zh-rTW",       # Chinese Traditional
     "zh-HK": "zh-rHK",         # Chinese Hong Kong
@@ -37,6 +37,7 @@ IOS_TO_ANDROID_LANG = {
 
     # Serbian variants
     "sr-Latn": "b+sr+Latn",    # Serbian Latin
+    "sr-Latn-ME": "b+sr+Latn+ME",  # Serbian Latin Montenegro
 
     # Norwegian (iOS uses 'nb' for Bokmål, Android accepts both)
     # "nb" stays "nb" - no mapping needed
@@ -343,6 +344,9 @@ class I18nSync:
         for lang in languages:
             self._write_android_strings(res_path, lang, default_lang)
 
+        # Generate locales_config.xml for per-app language support
+        self._write_locales_config(res_path, languages)
+
         print(f"Applied translations to {len(languages)} Android languages")
 
     def _write_android_strings(self, res_path: Path, lang: str, default_lang: str) -> None:
@@ -449,3 +453,51 @@ class I18nSync:
         if ios_type == '@':
             return 's'
         return ios_type
+
+    def _write_locales_config(self, res_path: Path, languages: Set[str]) -> None:
+        """Generate locales_config.xml for Android per-app language support."""
+        xml_dir = res_path / "xml"
+        xml_dir.mkdir(parents=True, exist_ok=True)
+
+        config_file = xml_dir / "locales_config.xml"
+
+        # Convert iOS language codes to Android format for locales_config
+        android_locales = set()
+        for lang in languages:
+            android_lang = self._ios_to_android_locale(lang)
+            android_locales.add(android_lang)
+
+        lines = [
+            '<?xml version="1.0" encoding="utf-8"?>',
+            '<locale-config xmlns:android="http://schemas.android.com/apk/res/android">',
+        ]
+
+        for locale in sorted(android_locales):
+            lines.append(f'    <locale android:name="{locale}" />')
+
+        lines.append('</locale-config>')
+
+        content = '\n'.join(lines) + '\n'
+        config_file.write_text(content, encoding='utf-8')
+        print(f"Generated {config_file}")
+
+    def _ios_to_android_locale(self, ios_lang: str) -> str:
+        """Convert iOS language code to Android locale format for locales_config.xml.
+
+        Derives from IOS_TO_ANDROID_LANG but converts folder format to locale format:
+        - values-zh-rCN -> zh-CN (remove 'r' prefix from region)
+        - values-b+sr+Latn -> sr-Latn (BCP 47 to standard format)
+        """
+        # Get the folder-style mapping first
+        folder_code = IOS_TO_ANDROID_LANG.get(ios_lang, ios_lang)
+
+        # Convert folder format to locale format
+        if folder_code.startswith("b+"):
+            # BCP 47 format: b+sr+Latn -> sr-Latn
+            parts = folder_code[2:].split("+")
+            return "-".join(parts)
+        elif "-r" in folder_code:
+            # Region format: zh-rCN -> zh-CN
+            return folder_code.replace("-r", "-")
+        else:
+            return folder_code
