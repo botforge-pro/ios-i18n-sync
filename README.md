@@ -12,6 +12,8 @@ Manage iOS localization files (`.strings`) through a single YAML file. No more e
 - ✅ **Find missing translations** - Instantly see which keys are missing in which languages
 - 🚀 **Simple workflow** - Extract, edit, apply
 - 🎯 **Smart key routing** - Automatically puts `NS*` and `CF*` keys into InfoPlist.strings
+- 🔢 **Plurals support** - Parses `.stringsdict` and generates Android `<plurals>`
+- 🌐 **Per-app language** - Auto-generates `locales_config.xml` for Android
 
 ## Installation
 
@@ -50,10 +52,58 @@ res/
 ├── values-ru/strings.xml        # Russian
 ├── values-zh-rCN/strings.xml    # Chinese Simplified
 ├── values-pt-rBR/strings.xml    # Portuguese Brazil
+├── xml/locales_config.xml       # Per-app language support
 └── ...
 ```
 
 Language codes are automatically converted from iOS to Android format (e.g., `zh-Hans` → `zh-rCN`, `pt-BR` → `pt-rBR`).
+
+### Plurals
+
+iOS `.stringsdict` files are automatically parsed and converted to Android `<plurals>`:
+
+```yaml
+# In translations.yaml
+Plurals:
+  items_count:
+    en:
+      one: "%d item"
+      other: "%d items"
+    ru:
+      one: "%d элемент"
+      few: "%d элемента"
+      many: "%d элементов"
+      other: "%d элементов"
+```
+
+Generates Android:
+```xml
+<plurals name="items_count">
+    <item quantity="one">%1$d item</item>
+    <item quantity="other">%1$d items</item>
+</plurals>
+```
+
+### Per-App Language Support
+
+The tool automatically generates `locales_config.xml` for Android 13+ per-app language settings:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="de" />
+    <locale android:name="en" />
+    <locale android:name="ru" />
+    <locale android:name="zh-CN" />
+</locale-config>
+```
+
+Reference it in your `AndroidManifest.xml`:
+```xml
+<application
+    android:localeConfig="@xml/locales_config"
+    ...>
+```
 
 The tool automatically:
 - Extracts from both `Localizable.strings` and `InfoPlist.strings`
@@ -99,6 +149,10 @@ InfoPlist:
 ## Features
 
 - Handles multiple .strings files (`Localizable.strings`, `InfoPlist.strings`)
+- Parses `.stringsdict` for pluralization rules
+- Generates Android `strings.xml` with proper `<plurals>` elements
+- Auto-generates `locales_config.xml` for Android per-app language
+- Converts iOS format specifiers to Android (`%@` → `%s`, positional args)
 - Organized YAML structure with sections
 - Preserves file headers (comments at the top of .strings files)
 - Sorts keys alphabetically within sections
