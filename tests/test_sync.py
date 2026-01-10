@@ -725,3 +725,89 @@ class TestLocalesConfig:
         assert '<locale android:name="zh-TW" />' in content  # zh-Hant -> zh-TW
         assert '<locale android:name="pt-BR" />' in content
         assert '<locale android:name="sr-Latn" />' in content
+
+
+class TestStringsdictWithFormatKey:
+    """Test parsing iOS .stringsdict files with full format key (not just placeholder)."""
+
+    def test_extract_stringsdict_with_full_format_key(self, temp_dir):
+        """Test extraction of plurals where NSStringLocalizedFormatKey contains full sentence."""
+        resources = temp_dir / "Resources"
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+
+        # Create stringsdict with full format key (like trialLimitTextsCount)
+        (en_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>trialLimitTextsCount</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>Only %#@texts@ available for free. Unlimited access to all texts is only available with a Premium subscription.</string>
+        <key>texts</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>d</string>
+            <key>one</key>
+            <string>%d text</string>
+            <key>other</key>
+            <string>%d texts</string>
+        </dict>
+    </dict>
+</dict>
+</plist>""", encoding='utf-8')
+
+        yaml_path = temp_dir / "translations.yaml"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.extract()
+
+        with open(yaml_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+
+        # Check that format_key is preserved
+        assert "Plurals" in data
+        assert "trialLimitTextsCount" in data["Plurals"]
+        plural_data = data["Plurals"]["trialLimitTextsCount"]
+
+        # Should have format_key with full sentence
+        assert "format_key" in plural_data
+        assert plural_data["format_key"] == "Only %#@texts@ available for free. Unlimited access to all texts is only available with a Premium subscription."
+
+        # Should still have language-specific plural forms
+        assert "en" in plural_data
+        assert plural_data["en"]["one"] == "%d text"
+        assert plural_data["en"]["other"] == "%d texts"
+
+    def test_apply_android_plurals_with_full_format_key(self, temp_dir):
+        """Test Android plurals contain full sentence when format_key is present."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Plurals": {
+                "trialLimitTextsCount": {
+                    "format_key": "Only %#@texts@ available for free. Unlimited access to all texts is only available with a Premium subscription.",
+                    "en": {"one": "%d text", "other": "%d texts"},
+                    "ru": {"one": "%d текст", "few": "%d текста", "many": "%d текстов", "other": "%d текстов"},
+                },
+            }
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        sync = I18nSync(yaml_path=yaml_path)
+        sync.apply_android(res_path=res_path, default_lang="en")
+
+        # Check English - should have full sentence with plural substituted
+        en_content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
+        assert '<plurals name="trialLimitTextsCount">' in en_content
+        assert '<item quantity="one">Only %d text available for free. Unlimited access to all texts is only available with a Premium subscription.</item>' in en_content
+        assert '<item quantity="other">Only %d texts available for free. Unlimited access to all texts is only available with a Premium subscription.</item>' in en_content
+
+        # Check Russian - should also have full sentence
+        ru_content = (res_path / "values-ru" / "strings.xml").read_text(encoding='utf-8')
+        assert '<plurals name="trialLimitTextsCount">' in ru_content
+        assert '<item quantity="one">Only %d текст available for free. Unlimited access to all texts is only available with a Premium subscription.</item>' in ru_content
+        assert '<item quantity="other">Only %d текстов available for free. Unlimited access to all texts is only available with a Premium subscription.</item>' in ru_content

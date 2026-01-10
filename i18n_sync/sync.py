@@ -174,6 +174,12 @@ class I18nSync:
                     self.plurals[key] = {}
                 self.plurals[key][lang] = plural_forms
 
+                # Save format_key if it's more than just the placeholder
+                # e.g., "Only %#@texts@ available..." vs just "%#@texts@"
+                simple_placeholder = f"%#@{var_name}@"
+                if format_key != simple_placeholder and "format_key" not in self.plurals[key]:
+                    self.plurals[key]["format_key"] = format_key
+
     def _unescape_strings_value(self, value: str) -> str:
         return value.replace('\\"', '"').replace('\\\\', '\\')
 
@@ -272,11 +278,14 @@ class I18nSync:
             for key in sorted(self.plurals.keys()):
                 plurals_data[key] = {}
                 langs = self.plurals[key]
+                # Add format_key first if present
+                if 'format_key' in langs:
+                    plurals_data[key]['format_key'] = langs['format_key']
                 # Sort with 'en' first
                 if 'en' in langs:
                     plurals_data[key]['en'] = langs['en']
                 for lang in sorted(langs.keys()):
-                    if lang != 'en':
+                    if lang not in ('en', 'format_key'):
                         plurals_data[key][lang] = langs[lang]
             data["Plurals"] = plurals_data
 
@@ -339,7 +348,8 @@ class I18nSync:
         # Get all languages from both strings and plurals
         languages = self.translations.get_all_languages()
         for plural_key, lang_data in self.plurals.items():
-            languages.update(lang_data.keys())
+            # Exclude 'format_key' - it's not a language
+            languages.update(k for k in lang_data.keys() if k != "format_key")
 
         for lang in languages:
             self._write_android_strings(res_path, lang, default_lang)
@@ -387,11 +397,19 @@ class I18nSync:
             lang_data = self.plurals[plural_key]
             if lang in lang_data:
                 forms = lang_data[lang]
+                format_key = lang_data.get("format_key")
                 lines.append(f'    <plurals name="{plural_key}">')
                 # Android quantity order: zero, one, two, few, many, other
                 for quantity in ["zero", "one", "two", "few", "many", "other"]:
                     if quantity in forms:
-                        escaped_value = self._escape_android_xml(forms[quantity])
+                        plural_value = forms[quantity]
+                        # If format_key exists, substitute the plural form into it
+                        if format_key:
+                            # Replace %#@varname@ with the plural value
+                            full_value = re.sub(r'%#@\w+@', plural_value, format_key)
+                        else:
+                            full_value = plural_value
+                        escaped_value = self._escape_android_xml(full_value)
                         lines.append(f'        <item quantity="{quantity}">{escaped_value}</item>')
                 lines.append('    </plurals>')
 
