@@ -727,6 +727,178 @@ class TestLocalesConfig:
         assert '<locale android:name="sr-Latn" />' in content
 
 
+class TestApplyStringsdict:
+    """Test applying YAML plurals to iOS .stringsdict files."""
+
+    def test_apply_writes_stringsdict(self, temp_dir):
+        """Test that apply() writes plurals from YAML to .stringsdict files."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "cancel": {"en": "Cancel", "ru": "Отмена"},
+            },
+            "Plurals": {
+                "items.count": {
+                    "en": {"one": "%d item", "other": "%d items"},
+                    "ru": {"one": "%d элемент", "few": "%d элемента", "many": "%d элементов", "other": "%d элементов"},
+                },
+            },
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        resources = temp_dir / "Resources"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.apply()
+
+        # Check English stringsdict was created
+        en_stringsdict = resources / "en.lproj" / "Localizable.stringsdict"
+        assert en_stringsdict.exists(), "English .stringsdict not created"
+
+        import plistlib
+        with open(en_stringsdict, 'rb') as f:
+            plist = plistlib.load(f)
+
+        assert "items.count" in plist
+        entry = plist["items.count"]
+        assert entry["NSStringLocalizedFormatKey"] == "%#@count@"
+        plural_dict = entry["count"]
+        assert plural_dict["NSStringFormatSpecTypeKey"] == "NSStringPluralRuleType"
+        assert plural_dict["NSStringFormatValueTypeKey"] == "d"
+        assert plural_dict["one"] == "%d item"
+        assert plural_dict["other"] == "%d items"
+
+        # Check Russian stringsdict with more plural forms
+        ru_stringsdict = resources / "ru.lproj" / "Localizable.stringsdict"
+        assert ru_stringsdict.exists(), "Russian .stringsdict not created"
+
+        with open(ru_stringsdict, 'rb') as f:
+            plist = plistlib.load(f)
+
+        ru_plural = plist["items.count"]["count"]
+        assert ru_plural["one"] == "%d элемент"
+        assert ru_plural["few"] == "%d элемента"
+        assert ru_plural["many"] == "%d элементов"
+        assert ru_plural["other"] == "%d элементов"
+
+    def test_apply_stringsdict_preserves_existing_keys(self, temp_dir):
+        """Test that apply() preserves existing stringsdict keys not in YAML."""
+        resources = temp_dir / "Resources"
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+
+        # Pre-existing stringsdict with a key
+        (en_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+\t<key>existing.plural</key>
+\t<dict>
+\t\t<key>NSStringLocalizedFormatKey</key>
+\t\t<string>%#@count@</string>
+\t\t<key>count</key>
+\t\t<dict>
+\t\t\t<key>NSStringFormatSpecTypeKey</key>
+\t\t\t<string>NSStringPluralRuleType</string>
+\t\t\t<key>NSStringFormatValueTypeKey</key>
+\t\t\t<string>d</string>
+\t\t\t<key>one</key>
+\t\t\t<string>%d thing</string>
+\t\t\t<key>other</key>
+\t\t\t<string>%d things</string>
+\t\t</dict>
+\t</dict>
+</dict>
+</plist>""", encoding='utf-8')
+
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Plurals": {
+                "new.plural": {
+                    "en": {"one": "%d file", "other": "%d files"},
+                },
+            },
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.apply()
+
+        import plistlib
+        with open(en_dir / "Localizable.stringsdict", 'rb') as f:
+            plist = plistlib.load(f)
+
+        # Both keys should exist
+        assert "existing.plural" in plist, "Pre-existing key was lost"
+        assert "new.plural" in plist, "New key was not added"
+        assert plist["existing.plural"]["count"]["one"] == "%d thing"
+        assert plist["new.plural"]["count"]["one"] == "%d file"
+
+    def test_apply_stringsdict_round_trip(self, temp_dir):
+        """Test extract -> modify -> apply round trip for stringsdict."""
+        resources = temp_dir / "Resources"
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+
+        (en_dir / "Localizable.strings").write_text('"hello" = "Hello";\n', encoding='utf-8')
+        (en_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+\t<key>days.count</key>
+\t<dict>
+\t\t<key>NSStringLocalizedFormatKey</key>
+\t\t<string>%#@count@</string>
+\t\t<key>count</key>
+\t\t<dict>
+\t\t\t<key>NSStringFormatSpecTypeKey</key>
+\t\t\t<string>NSStringPluralRuleType</string>
+\t\t\t<key>NSStringFormatValueTypeKey</key>
+\t\t\t<string>d</string>
+\t\t\t<key>one</key>
+\t\t\t<string>%d day</string>
+\t\t\t<key>other</key>
+\t\t\t<string>%d days</string>
+\t\t</dict>
+\t</dict>
+</dict>
+</plist>""", encoding='utf-8')
+
+        yaml_path = temp_dir / "translations.yaml"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.extract()
+
+        # Add Russian plurals to YAML
+        with open(yaml_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+
+        data["Plurals"]["days.count"]["ru"] = {
+            "one": "%d день",
+            "few": "%d дня",
+            "many": "%d дней",
+            "other": "%d дней",
+        }
+
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(data, f, allow_unicode=True)
+
+        # Apply
+        sync.apply()
+
+        # Russian stringsdict should now exist
+        import plistlib
+        ru_stringsdict = resources / "ru.lproj" / "Localizable.stringsdict"
+        assert ru_stringsdict.exists()
+
+        with open(ru_stringsdict, 'rb') as f:
+            plist = plistlib.load(f)
+
+        assert "days.count" in plist
+        assert plist["days.count"]["count"]["one"] == "%d день"
+        assert plist["days.count"]["count"]["few"] == "%d дня"
+
+
 class TestStringsdictWithFormatKey:
     """Test parsing iOS .stringsdict files with full format key (not just placeholder)."""
 

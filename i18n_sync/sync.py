@@ -102,15 +102,23 @@ class I18nSync:
                 self._parse_stringsdict_file(stringsdict_file, lang)
 
     def apply(self) -> None:
-        """Apply translations from YAML to .strings files."""
+        """Apply translations from YAML to .strings and .stringsdict files."""
         if not self.yaml_path.exists():
             raise FileNotFoundError(f"YAML file not found: {self.yaml_path}")
 
         self._load_yaml()
         languages = self.translations.get_all_languages()
 
+        # Also include languages that only appear in plurals
+        for lang_data in self.plurals.values():
+            languages.update(lang_data.keys())
+
         for section_name in self.strings_files:
             self._apply_section(section_name, languages)
+
+        # Write .stringsdict files for plurals
+        if self.plurals:
+            self._apply_stringsdict(languages)
 
         print(f"Applied translations to {len(languages)} languages")
 
@@ -128,6 +136,64 @@ class I18nSync:
 
         strings_file = lproj_dir / f"{section.name}.strings"
         self._write_strings_file(strings_file, lang, section)
+
+    def _apply_stringsdict(self, languages: Set[str]) -> None:
+        """Write plurals from YAML to .stringsdict files for each language."""
+        for lang in languages:
+            # Collect all plural keys that have this language
+            lang_plurals = {}
+            for key, lang_data in self.plurals.items():
+                if lang in lang_data:
+                    lang_plurals[key] = lang_data[lang]
+
+            if not lang_plurals:
+                continue
+
+            lproj_dir = self.resources_path / f"{lang}.lproj"
+            lproj_dir.mkdir(exist_ok=True, parents=True)
+
+            stringsdict_file = lproj_dir / "Localizable.stringsdict"
+            self._write_stringsdict_file(stringsdict_file, lang_plurals)
+
+    def _write_stringsdict_file(self, file_path: Path, lang_plurals: dict) -> None:
+        """Write or merge plurals into an iOS .stringsdict plist file."""
+        # Load existing plist to preserve keys not in YAML
+        existing = {}
+        if file_path.exists():
+            with open(file_path, 'rb') as f:
+                existing = plistlib.load(f)
+
+        # Merge new plurals into existing
+        for key, forms in lang_plurals.items():
+            format_key_value = forms.get("_format_key")
+
+            # Determine variable name and format key
+            if format_key_value:
+                match = re.search(r'%#@(\w+)@', format_key_value)
+                var_name = match.group(1) if match else "count"
+            else:
+                var_name = "count"
+                format_key_value = f"%#@{var_name}@"
+
+            # Build plural dict
+            plural_dict = {
+                "NSStringFormatSpecTypeKey": "NSStringPluralRuleType",
+                "NSStringFormatValueTypeKey": "d",
+            }
+            for quantity in ["zero", "one", "two", "few", "many", "other"]:
+                if quantity in forms:
+                    plural_dict[quantity] = forms[quantity]
+
+            existing[key] = {
+                "NSStringLocalizedFormatKey": format_key_value,
+                var_name: plural_dict,
+            }
+
+        # Write plist
+        with open(file_path, 'wb') as f:
+            plistlib.dump(existing, f, fmt=plistlib.FMT_XML)
+
+        print(f"Updated {file_path}")
 
     def _parse_strings_file(self, file_path: Path, lang: str, section_name: str) -> None:
         content = file_path.read_text(encoding='utf-8')
