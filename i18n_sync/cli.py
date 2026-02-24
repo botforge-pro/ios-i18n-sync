@@ -17,10 +17,12 @@ def cli():
               help='Path to Resources directory (default: Resources)')
 @click.option('--output', '-o', default='translations.yaml',
               help='Output YAML file (default: translations.yaml)')
-def extract(resources, output):
+@click.option('--source-lang', '-s', default='en',
+              help='Source language that defines the canonical key list (default: en)')
+def extract(resources, output, source_lang):
     """Extract all .strings files to translations.yaml."""
     try:
-        sync = I18nSync(resources_path=resources, yaml_path=output)
+        sync = I18nSync(resources_path=resources, yaml_path=output, source_lang=source_lang)
         sync.extract()
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)

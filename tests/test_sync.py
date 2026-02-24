@@ -269,9 +269,71 @@ class TestApply:
             sync.apply()
 
 
+class TestDeadKeyRemoval:
+    """Test that keys missing from en (source of truth) are dropped."""
+
+    def test_extract_drops_keys_missing_from_en(self, temp_dir):
+        """Keys that exist in other languages but NOT in en should be dropped during extract."""
+        resources = temp_dir / "Resources"
+
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+        (en_dir / "Localizable.strings").write_text(
+            '"cancel" = "Cancel";\n"save" = "Save";\n', encoding='utf-8'
+        )
+
+        ru_dir = resources / "ru.lproj"
+        ru_dir.mkdir(parents=True)
+        (ru_dir / "Localizable.strings").write_text(
+            '"cancel" = "Отмена";\n"save" = "Сохранить";\n"deadKey" = "Мёртвый ключ";\n',
+            encoding='utf-8',
+        )
+
+        yaml_path = temp_dir / "translations.yaml"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.extract()
+
+        with open(yaml_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+
+        assert "cancel" in data["Localizable"]
+        assert "save" in data["Localizable"]
+        assert "deadKey" not in data["Localizable"]
+
+    def test_round_trip_removes_deleted_keys(self, temp_dir):
+        """Extract -> apply removes keys from other languages if deleted from en."""
+        resources = temp_dir / "Resources"
+
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+        (en_dir / "Localizable.strings").write_text(
+            '"cancel" = "Cancel";\n"save" = "Save";\n', encoding='utf-8'
+        )
+
+        ru_dir = resources / "ru.lproj"
+        ru_dir.mkdir(parents=True)
+        (ru_dir / "Localizable.strings").write_text(
+            '"cancel" = "Отмена";\n"save" = "Сохранить";\n"deadKey" = "Мёртвый ключ";\n',
+            encoding='utf-8',
+        )
+
+        yaml_path = temp_dir / "translations.yaml"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.extract()
+        sync.apply()
+
+        ru_content = (resources / "ru.lproj" / "Localizable.strings").read_text(encoding='utf-8')
+        assert "deadKey" not in ru_content
+        assert '"cancel" = "Отмена";' in ru_content
+        assert '"save" = "Сохранить";' in ru_content
+
+        en_content = (resources / "en.lproj" / "Localizable.strings").read_text(encoding='utf-8')
+        assert "deadKey" not in en_content
+
+
 class TestRoundTrip:
     """Test extract -> apply round trip."""
-    
+
     def test_round_trip(self, sample_resources, temp_dir):
         """Test that extract -> apply preserves data."""
         yaml_path = temp_dir / "translations.yaml"

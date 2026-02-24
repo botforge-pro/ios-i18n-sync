@@ -57,16 +57,19 @@ IOS_TO_ANDROID_LANG = {
 class I18nSync:
     """Synchronize iOS .strings files through YAML with sections."""
 
-    def __init__(self, resources_path: str = "Resources", yaml_path: str = "translations.yaml"):
+    def __init__(self, resources_path: str = "Resources", yaml_path: str = "translations.yaml",
+                 source_lang: str = "en"):
         """
         Initialize the sync tool.
 
         Args:
             resources_path: Path to Resources directory containing *.lproj folders
             yaml_path: Path to the YAML file for translations
+            source_lang: The source language that defines the canonical key list
         """
         self.resources_path = Path(resources_path)
         self.yaml_path = Path(yaml_path)
+        self.source_lang = source_lang
         self.strings_files = ["Localizable", "InfoPlist"]
         self.translations = TranslationsData()
         self.plurals = {}  # {key: {lang: {quantity: value}}}
@@ -79,6 +82,7 @@ class I18nSync:
         for lproj_dir in self._get_lproj_directories():
             self._process_language_directory(lproj_dir)
 
+        self._drop_keys_missing_from_source_lang()
         self._save_yaml()
         self._report_statistics()
 
@@ -100,6 +104,21 @@ class I18nSync:
             stringsdict_file = lproj_dir / f"{strings_file_name}.stringsdict"
             if stringsdict_file.exists():
                 self._parse_stringsdict_file(stringsdict_file, lang)
+
+    def _drop_keys_missing_from_source_lang(self) -> None:
+        """Remove keys that don't exist in the source language.
+
+        The source language defines the canonical key list. Keys present in
+        other languages but missing from the source language are considered
+        deleted and are dropped from the extraction result.
+        """
+        for section in self.translations.sections.values():
+            dead_keys = [
+                key for key, trans_key in section.keys.items()
+                if trans_key.get_translation(self.source_lang) is None
+            ]
+            for key in dead_keys:
+                del section.keys[key]
 
     def apply(self) -> None:
         """Apply translations from YAML to .strings and .stringsdict files."""
