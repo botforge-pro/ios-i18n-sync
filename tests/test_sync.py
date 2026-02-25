@@ -532,8 +532,10 @@ class TestApplyAndroid:
         ("%d files of %d (%@)", "%1$d files of %2$d (%3$s)"),
         # Mixed types
         ("%@ has %d items", "%1$s has %2$d items"),
-        # Already positional - keep as is
+        # Already positional - keep as is (convert @ to s)
         ("%1$d of %2$d", "%1$d of %2$d"),
+        ("%1$@ to %2$@", "%1$s to %2$s"),
+        ("%1$@ has %2$d items (%3$@)", "%1$s has %2$d items (%3$s)"),
         # Single specifier - no positional needed
         ("%d items", "%d items"),
         ("%@ name", "%s name"),

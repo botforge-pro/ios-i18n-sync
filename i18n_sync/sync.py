@@ -518,9 +518,12 @@ class I18nSync:
 
         - %@ -> %s (iOS object placeholder to Android string)
         - Multiple specifiers get positional args: %d %d -> %1$d %2$d
-        - Already positional specifiers are kept as-is
+        - Already positional specifiers: %1$@ -> %1$s (convert type only)
         """
-        # Pattern to match format specifiers (excluding %% which is escaped percent)
+        # First, convert already-positional iOS specifiers: %1$@ -> %1$s
+        value = re.sub(r'(%\d+\$)@', r'\1s', value)
+
+        # Pattern to match non-positional format specifiers (excluding %%)
         # Matches: %@, %d, %f, %.2f, %ld, etc. but not already positional like %1$d
         pattern = r'%(?!\d+\$)(\.\d+)?(@|[dfiulxXoOeEgGsScCpPaAbBhHnN]|l[diu])'
 
