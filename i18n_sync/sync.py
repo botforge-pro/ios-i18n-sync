@@ -130,7 +130,7 @@ class I18nSync:
 
         # Also include languages that only appear in plurals
         for lang_data in self.plurals.values():
-            languages.update(lang_data.keys())
+            languages.update(k for k in lang_data.keys() if k != "_format_key")
 
         for section_name in self.strings_files:
             self._apply_section(section_name, languages)
@@ -163,7 +163,11 @@ class I18nSync:
             lang_plurals = {}
             for key, lang_data in self.plurals.items():
                 if lang in lang_data:
-                    lang_plurals[key] = lang_data[lang]
+                    forms = lang_data[lang]
+                    # Inherit key-level _format_key if language doesn't have its own
+                    if "_format_key" not in forms and "_format_key" in lang_data:
+                        forms = {**forms, "_format_key": lang_data["_format_key"]}
+                    lang_plurals[key] = forms
 
             if not lang_plurals:
                 continue
@@ -188,7 +192,7 @@ class I18nSync:
 
             # Determine variable name and format key
             if format_key_value:
-                match = re.search(r'%#@(\w+)@', format_key_value)
+                match = re.search(r'%(?:\d+\$)?#@(\w+)@', format_key_value)
                 var_name = match.group(1) if match else "count"
             else:
                 var_name = "count"
@@ -235,10 +239,10 @@ class I18nSync:
             if not isinstance(entry, dict):
                 continue
 
-            # Find the plural variable (e.g., "hours" in %#@hours@)
+            # Find the plural variable (e.g., "hours" in %#@hours@ or %2$#@hours@)
             format_key = entry.get("NSStringLocalizedFormatKey", "")
-            # Extract variable name from %#@varname@
-            match = re.search(r'%#@(\w+)@', format_key)
+            # Extract variable name from %#@varname@ or %N$#@varname@
+            match = re.search(r'%(?:\d+\$)?#@(\w+)@', format_key)
             if not match:
                 continue
 

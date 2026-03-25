@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-03-25
+
+### Added
+- Support for positional plural variables (`%2$#@var@`) in stringsdict parsing and writing
+- Support for key-level `_format_key` in YAML (shared across all languages, not duplicated per-language)
+- Key-level `_format_key` is inherited by languages that don't define their own
+
 ## [0.9.1] - 2026-02-25
 
 ### Fixed

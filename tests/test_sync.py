@@ -1082,3 +1082,137 @@ class TestStringsdictWithFormatKey:
         assert '<plurals name="trialLimitTextsCount">' in de_content
         assert '<item quantity="one">Nur %d Text kostenlos. Unbegrenzter Zugang nur mit Premium.</item>' in de_content
         assert '<item quantity="other">Nur %d Texte kostenlos. Unbegrenzter Zugang nur mit Premium.</item>' in de_content
+
+    def test_extract_stringsdict_positional_plural(self, temp_dir):
+        """Test extraction of stringsdict with positional plural variable like %2$#@var@."""
+        resources = temp_dir / "Resources"
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+        (en_dir / "Localizable.strings").write_text('"x" = "x";\n', encoding='utf-8')
+        (en_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>settings.combinations</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>%1$@ %2$#@combinations@</string>
+        <key>combinations</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>d</string>
+            <key>one</key>
+            <string>possible combination</string>
+            <key>other</key>
+            <string>possible combinations</string>
+        </dict>
+    </dict>
+</dict>
+</plist>""", encoding='utf-8')
+
+        yaml_path = temp_dir / "translations.yaml"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.extract()
+
+        with open(yaml_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+
+        assert "Plurals" in data
+        plural_data = data["Plurals"]["settings.combinations"]
+        assert plural_data["en"]["one"] == "possible combination"
+        assert plural_data["en"]["other"] == "possible combinations"
+        assert plural_data["en"]["_format_key"] == "%1$@ %2$#@combinations@"
+
+    def test_apply_stringsdict_positional_plural(self, temp_dir):
+        """Test applying YAML with positional plural variable produces correct stringsdict."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "x": {"en": "x", "ru": "x"},
+            },
+            "Plurals": {
+                "settings.combinations": {
+                    "en": {
+                        "_format_key": "%1$@ %2$#@combinations@",
+                        "one": "possible combination",
+                        "other": "possible combinations",
+                    },
+                    "ru": {
+                        "_format_key": "%1$@ %2$#@combinations@",
+                        "one": "возможная комбинация",
+                        "few": "возможные комбинации",
+                        "many": "возможных комбинаций",
+                        "other": "возможных комбинаций",
+                    },
+                },
+            },
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        resources = temp_dir / "Resources"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.apply()
+
+        import plistlib
+        en_stringsdict = resources / "en.lproj" / "Localizable.stringsdict"
+        assert en_stringsdict.exists()
+        with open(en_stringsdict, 'rb') as f:
+            plist = plistlib.load(f)
+
+        entry = plist["settings.combinations"]
+        assert entry["NSStringLocalizedFormatKey"] == "%1$@ %2$#@combinations@"
+        assert "combinations" in entry
+        plural_dict = entry["combinations"]
+        assert plural_dict["NSStringFormatSpecTypeKey"] == "NSStringPluralRuleType"
+        assert plural_dict["NSStringFormatValueTypeKey"] == "d"
+        assert plural_dict["one"] == "possible combination"
+        assert plural_dict["other"] == "possible combinations"
+
+        ru_stringsdict = resources / "ru.lproj" / "Localizable.stringsdict"
+        with open(ru_stringsdict, 'rb') as f:
+            plist = plistlib.load(f)
+
+        ru_plural = plist["settings.combinations"]["combinations"]
+        assert ru_plural["one"] == "возможная комбинация"
+        assert ru_plural["few"] == "возможные комбинации"
+        assert ru_plural["many"] == "возможных комбинаций"
+
+    def test_apply_stringsdict_key_level_format_key(self, temp_dir):
+        """Test that _format_key at key level (not per-language) applies to all languages."""
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Localizable": {
+                "x": {"en": "x", "ru": "x"},
+            },
+            "Plurals": {
+                "settings.combinations": {
+                    "_format_key": "%1$@ %2$#@combinations@",
+                    "en": {
+                        "one": "possible combination",
+                        "other": "possible combinations",
+                    },
+                    "ru": {
+                        "one": "возможная комбинация",
+                        "few": "возможные комбинации",
+                        "many": "возможных комбинаций",
+                        "other": "возможных комбинаций",
+                    },
+                },
+            },
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        resources = temp_dir / "Resources"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.apply()
+
+        import plistlib
+        for lang in ["en", "ru"]:
+            stringsdict = resources / f"{lang}.lproj" / "Localizable.stringsdict"
+            with open(stringsdict, 'rb') as f:
+                plist = plistlib.load(f)
+            assert plist["settings.combinations"]["NSStringLocalizedFormatKey"] == "%1$@ %2$#@combinations@"
