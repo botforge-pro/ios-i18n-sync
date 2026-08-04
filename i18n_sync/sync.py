@@ -132,29 +132,33 @@ class I18nSync:
         for lang_data in self.plurals.values():
             languages.update(k for k in lang_data.keys() if k != "_format_key")
 
+        missing = 0
         for section_name in self.strings_files:
-            self._apply_section(section_name, languages)
+            missing += self._apply_section(section_name, languages)
 
         # Write .stringsdict files for plurals
         if self.plurals:
             self._apply_stringsdict(languages)
 
         print(f"Applied translations to {len(languages)} languages")
+        if missing:
+            # A per-key warning scrolls past in a wall of "Updated ..." lines.
+            # The count is what a human actually reads.
+            print(f"{missing} missing translation(s) written as empty strings")
 
-    def _apply_section(self, section_name: str, languages: Set[str]) -> None:
+    def _apply_section(self, section_name: str, languages: Set[str]) -> int:
         section = self.translations.sections.get(section_name)
         if not section:
-            return
+            return 0
 
-        for lang in languages:
-            self._write_section_to_language(section, lang)
+        return sum(self._write_section_to_language(section, lang) for lang in languages)
 
-    def _write_section_to_language(self, section, lang: str) -> None:
+    def _write_section_to_language(self, section, lang: str) -> int:
         lproj_dir = self.resources_path / f"{lang}.lproj"
         lproj_dir.mkdir(exist_ok=True, parents=True)
 
         strings_file = lproj_dir / f"{section.name}.strings"
-        self._write_strings_file(strings_file, lang, section)
+        return self._write_strings_file(strings_file, lang, section)
 
     def _apply_stringsdict(self, languages: Set[str]) -> None:
         """Write plurals from YAML to .stringsdict files for each language."""
@@ -276,8 +280,9 @@ class I18nSync:
     def _escape_strings_value(self, value: str) -> str:
         return value.replace('\\', '\\\\').replace('"', '\\"')
 
-    def _write_strings_file(self, file_path: Path, lang: str, section) -> None:
-        """Write translations to a .strings file."""
+    def _write_strings_file(self, file_path: Path, lang: str, section) -> int:
+        """Write translations to a .strings file, returning the missing count."""
+        missing = 0
         # Get header if file exists
         header = self._get_file_header(file_path, lang, section.name)
 
@@ -290,12 +295,16 @@ class I18nSync:
         for key in sorted(section.keys.keys()):
             trans_key = section.keys[key]
             value = trans_key.get_translation(lang)
-            if value is not None:
+            # An empty value is NOT a translation. iOS treats `"key" = "";` as a
+            # valid string and does not fall back to Base, so the label renders
+            # blank. Absent and empty therefore have to be reported the same way.
+            if value is not None and value.strip():
                 escaped_value = self._escape_strings_value(value)
                 lines.append(f'"{key}" = "{escaped_value}";')
             else:
                 # Add empty value for missing translation
                 lines.append(f'"{key}" = "";')
+                missing += 1
                 print(f"Warning: Missing '{section.name}.{key}' for language '{lang}'")
 
         # Write file
@@ -305,6 +314,7 @@ class I18nSync:
 
         file_path.write_text(content, encoding='utf-8')
         print(f"Updated {file_path}")
+        return missing
 
     def _get_file_header(self, file_path: Path, lang: str, file_type: str) -> Optional[str]:
         """Extract header comment from existing file or create default."""
@@ -412,7 +422,10 @@ class I18nSync:
         missing_found = False
         for section_name, section in self.translations.sections.items():
             for key, trans_key in section.keys.items():
-                missing_langs = languages - set(trans_key.translations.keys())
+                missing_langs = {
+                    lang for lang in languages
+                    if not (trans_key.get_translation(lang) or "").strip()
+                }
                 if missing_langs:
                     if not missing_found:
                         print("\nMissing translations:")

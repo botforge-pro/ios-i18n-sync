@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-08-05
+
+### Fixed
+- An empty value is now reported as a missing translation, by both `extract` and `apply`. iOS treats `"key" = "";` as a valid string and does not fall back to Base, so a blank entry renders as a blank label; reporting it as present was a false green. One app shipped with 84 of its 130 Croatian strings empty and neither command said anything.
+- `apply` prints a total after the per-key warnings, which otherwise scroll past in a wall of `Updated ...` lines.
+- Whitespace-only values count as empty.
+
 ## [0.10.0] - 2026-03-25
 
 ### Added

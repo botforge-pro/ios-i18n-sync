@@ -1216,3 +1216,95 @@ class TestStringsdictWithFormatKey:
             with open(stringsdict, 'rb') as f:
                 plist = plistlib.load(f)
             assert plist["settings.combinations"]["NSStringLocalizedFormatKey"] == "%1$@ %2$#@combinations@"
+
+class TestEmptyTranslationIsMissing:
+    """An empty value is an untranslated string, not a translation.
+
+    A .strings entry written as `"key" = "";` is a valid translation as far as
+    iOS is concerned, so the OS does not fall back to Base and the label renders
+    blank. Reporting it as present is therefore a false green: it is exactly how
+    one app shipped with 84 of 130 Croatian strings empty and nothing said so.
+    """
+
+    def test_extract_reports_empty_value_as_missing(self, temp_dir, capsys):
+        resources = temp_dir / "Resources"
+        en = resources / "en.lproj"
+        en.mkdir(parents=True)
+        (en / "Localizable.strings").write_text(
+            '"hello" = "Hello";\n"bye" = "Bye";\n', encoding='utf-8')
+        hr = resources / "hr.lproj"
+        hr.mkdir(parents=True)
+        (hr / "Localizable.strings").write_text(
+            '"hello" = "Bok";\n"bye" = "";\n', encoding='utf-8')
+
+        sync = I18nSync(resources_path=resources, yaml_path=temp_dir / "translations.yaml")
+        sync.extract()
+
+        out = capsys.readouterr().out
+        assert "All keys present in all languages" not in out
+        assert "Localizable.bye" in out
+        assert "hr" in out
+
+    def test_extract_stays_green_when_nothing_is_empty(self, temp_dir, capsys):
+        resources = temp_dir / "Resources"
+        en = resources / "en.lproj"
+        en.mkdir(parents=True)
+        (en / "Localizable.strings").write_text('"hello" = "Hello";\n', encoding='utf-8')
+        hr = resources / "hr.lproj"
+        hr.mkdir(parents=True)
+        (hr / "Localizable.strings").write_text('"hello" = "Bok";\n', encoding='utf-8')
+
+        sync = I18nSync(resources_path=resources, yaml_path=temp_dir / "translations.yaml")
+        sync.extract()
+
+        assert "All keys present in all languages" in capsys.readouterr().out
+
+    def test_apply_warns_on_empty_value(self, temp_dir, capsys):
+        yaml_path = temp_dir / "translations.yaml"
+        trans_data = TranslationsData()
+        section = trans_data.add_section("Localizable")
+        section.add_key("hello", "en", "Hello")
+        section.add_key("hello", "hr", "Bok")
+        section.add_key("bye", "en", "Bye")
+        section.add_key("bye", "hr", "")  # present in the YAML, but empty
+
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
+
+        resources = temp_dir / "Resources"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.apply()
+
+        out = capsys.readouterr().out
+        assert "Warning: Missing 'Localizable.bye' for language 'hr'" in out
+        assert "1 missing translation" in out
+
+    def test_apply_summarises_nothing_when_complete(self, temp_dir, capsys):
+        yaml_path = temp_dir / "translations.yaml"
+        trans_data = TranslationsData()
+        section = trans_data.add_section("Localizable")
+        section.add_key("hello", "en", "Hello")
+        section.add_key("hello", "hr", "Bok")
+
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
+
+        resources = temp_dir / "Resources"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.apply()
+
+        assert "missing translation" not in capsys.readouterr().out
+
+    def test_whitespace_only_counts_as_empty(self, temp_dir, capsys):
+        resources = temp_dir / "Resources"
+        en = resources / "en.lproj"
+        en.mkdir(parents=True)
+        (en / "Localizable.strings").write_text('"hello" = "Hello";\n', encoding='utf-8')
+        hr = resources / "hr.lproj"
+        hr.mkdir(parents=True)
+        (hr / "Localizable.strings").write_text('"hello" = "   ";\n', encoding='utf-8')
+
+        sync = I18nSync(resources_path=resources, yaml_path=temp_dir / "translations.yaml")
+        sync.extract()
+
+        assert "All keys present in all languages" not in capsys.readouterr().out
