@@ -363,10 +363,23 @@ class I18nSync:
         lang_name = lang_names.get(lang, lang)
         return f"""/*
   {file_type}.strings
-  QRServe
+  {self._project_name()}
 
   {lang_name}
 */"""
+
+    def _project_name(self) -> str:
+        """Name the app the way Xcode's own header does.
+
+        Taken from the resources path, since that is the only thing the
+        tool is told about the project: an app keeps its strings either
+        in a Resources folder inside the target, in which case the
+        target above it is the name, or in the target folder itself.
+        """
+        folder = self.resources_path.resolve()
+        if folder.name == "Resources":
+            return folder.parent.name
+        return folder.name
 
     def _save_yaml(self) -> None:
         """Save translations to YAML file."""

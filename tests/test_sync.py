@@ -1308,3 +1308,36 @@ class TestEmptyTranslationIsMissing:
         sync.extract()
 
         assert "All keys present in all languages" not in capsys.readouterr().out
+
+    def test_new_locale_header_names_the_project(self, temp_dir):
+        yaml_path = temp_dir / "translations.yaml"
+        trans_data = TranslationsData()
+        section = trans_data.add_section("Localizable")
+        section.add_key("hello", "en", "Hello")
+        section.add_key("hello", "hr", "Bok")
+
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
+
+        resources = temp_dir / "Kaleidophone" / "Resources"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.apply()
+
+        header = (resources / "hr.lproj" / "Localizable.strings").read_text(encoding='utf-8')
+        assert "Kaleidophone" in header
+
+    def test_project_name_comes_from_the_resources_folder_itself(self, temp_dir):
+        yaml_path = temp_dir / "translations.yaml"
+        trans_data = TranslationsData()
+        section = trans_data.add_section("Localizable")
+        section.add_key("hello", "en", "Hello")
+
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
+
+        resources = temp_dir / "Kaleidophone"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.apply()
+
+        header = (resources / "en.lproj" / "Localizable.strings").read_text(encoding='utf-8')
+        assert "Kaleidophone" in header
