@@ -1,9 +1,9 @@
 ![Tests](https://github.com/botforge-pro/ios-i18n-sync/workflows/Tests/badge.svg)
-[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org)
 
 # iOS i18n Sync
 
-Manage iOS localization files (`.strings`) through a single YAML file. No more editing dozens of separate files for each language. Automatically handles both `Localizable.strings` and `InfoPlist.strings`.
+Manage iOS localization files (`.strings`) through a single YAML file. No more editing dozens of separate files for each language. Automatically handles `Localizable.strings`, `InfoPlist.strings`, and `AppShortcuts.strings`.
 
 ## Why?
 
@@ -28,7 +28,7 @@ pip install git+https://github.com/botforge-pro/ios-i18n-sync.git
 From your iOS project root:
 
 ```bash
-# Extract all .strings files (both Localizable and InfoPlist) to translations.yaml
+# Extract Localizable, InfoPlist, and AppShortcuts strings to translations.yaml
 i18n-sync extract --resources Resources
 
 # Edit translations.yaml with your favorite editor
@@ -106,7 +106,7 @@ Reference it in your `AndroidManifest.xml`:
 ```
 
 The tool automatically:
-- Extracts from both `Localizable.strings` and `InfoPlist.strings`
+- Extracts from `Localizable.strings`, `InfoPlist.strings`, and `AppShortcuts.strings`
 - Organizes translations into sections in YAML
 - Preserves the structure when applying back
 
@@ -148,7 +148,7 @@ InfoPlist:
 
 ## Features
 
-- Handles multiple .strings files (`Localizable.strings`, `InfoPlist.strings`)
+- Handles multiple .strings files (`Localizable.strings`, `InfoPlist.strings`, `AppShortcuts.strings`)
 - Parses `.stringsdict` for pluralization rules
 - Generates Android `strings.xml` with proper `<plurals>` elements
 - Auto-generates `locales_config.xml` for Android per-app language

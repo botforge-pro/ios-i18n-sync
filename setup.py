@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="ios-i18n-sync",
-    version="0.10.2",
+    version="0.11.0",
     author="botforge.pro",
     description="iOS localization sync tool for .strings files",
     long_description=long_description,
@@ -18,12 +18,11 @@ setup(
         "Topic :: Software Development :: Internationalization",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
     ],
-    python_requires=">=3.9",
+    python_requires=">=3.10",
     install_requires=[
         "PyYAML>=6.0",
         "click>=8.0",

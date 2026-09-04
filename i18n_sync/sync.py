@@ -14,41 +14,32 @@ from .models import TranslationsData
 # See: https://developer.apple.com/help/app-store-connect/reference/app-store-localizations/
 IOS_TO_ANDROID_LANG = {
     # Chinese variants (use region format for locales_config.xml compatibility)
-    "zh-Hans": "zh-rCN",       # Chinese Simplified
-    "zh-Hant": "zh-rTW",       # Chinese Traditional
-    "zh-HK": "zh-rHK",         # Chinese Hong Kong
-
+    "zh-Hans": "zh-rCN",  # Chinese Simplified
+    "zh-Hant": "zh-rTW",  # Chinese Traditional
+    "zh-HK": "zh-rHK",  # Chinese Hong Kong
     # Portuguese variants
-    "pt-BR": "pt-rBR",         # Portuguese Brazil
-    "pt-PT": "pt-rPT",         # Portuguese Portugal
-
+    "pt-BR": "pt-rBR",  # Portuguese Brazil
+    "pt-PT": "pt-rPT",  # Portuguese Portugal
     # Spanish variants
-    "es-419": "b+es+419",      # Spanish Latin America
-    "es-MX": "es-rMX",         # Spanish Mexico
-
+    "es-419": "b+es+419",  # Spanish Latin America
+    "es-MX": "es-rMX",  # Spanish Mexico
     # English variants
-    "en-AU": "en-rAU",         # English Australia
-    "en-CA": "en-rCA",         # English Canada
-    "en-GB": "en-rGB",         # English United Kingdom
-    "en-US": "en-rUS",         # English United States
-
+    "en-AU": "en-rAU",  # English Australia
+    "en-CA": "en-rCA",  # English Canada
+    "en-GB": "en-rGB",  # English United Kingdom
+    "en-US": "en-rUS",  # English United States
     # French variants
-    "fr-CA": "fr-rCA",         # French Canada
-
+    "fr-CA": "fr-rCA",  # French Canada
     # Serbian variants
-    "sr-Latn": "b+sr+Latn",    # Serbian Latin
+    "sr-Latn": "b+sr+Latn",  # Serbian Latin
     "sr-Latn-ME": "b+sr+Latn+ME",  # Serbian Latin Montenegro
-
     # Norwegian (iOS uses 'nb' for Bokmål, Android accepts both)
     # "nb" stays "nb" - no mapping needed
-
     # Hebrew (iOS may use 'he', Android uses 'iw')
     "he": "iw",
-
     # Indonesian (iOS may use 'id', Android historically used 'in')
     # Modern Android accepts 'id', but 'in' for compatibility
     # "id": "in",  # Uncomment if targeting old Android versions
-
     # Yiddish
     "yi": "ji",
 }
@@ -57,8 +48,12 @@ IOS_TO_ANDROID_LANG = {
 class I18nSync:
     """Synchronize iOS .strings files through YAML with sections."""
 
-    def __init__(self, resources_path: str = "Resources", yaml_path: str = "translations.yaml",
-                 source_lang: str = "en"):
+    def __init__(
+        self,
+        resources_path: str = "Resources",
+        yaml_path: str = "translations.yaml",
+        source_lang: str = "en",
+    ):
         """
         Initialize the sync tool.
 
@@ -70,7 +65,7 @@ class I18nSync:
         self.resources_path = Path(resources_path)
         self.yaml_path = Path(yaml_path)
         self.source_lang = source_lang
-        self.strings_files = ["Localizable", "InfoPlist"]
+        self.strings_files = ["Localizable", "InfoPlist", "AppShortcuts"]
         self.translations = TranslationsData()
         self.plurals = {}  # {key: {lang: {quantity: value}}}
 
@@ -89,7 +84,9 @@ class I18nSync:
     def _get_lproj_directories(self):
         lproj_dirs = list(self.resources_path.glob("*.lproj"))
         if not lproj_dirs:
-            raise FileNotFoundError(f"No *.lproj directories found in {self.resources_path}")
+            raise FileNotFoundError(
+                f"No *.lproj directories found in {self.resources_path}"
+            )
         return lproj_dirs
 
     def _process_language_directory(self, lproj_dir: Path) -> None:
@@ -114,7 +111,8 @@ class I18nSync:
         """
         for section in self.translations.sections.values():
             dead_keys = [
-                key for key, trans_key in section.keys.items()
+                key
+                for key, trans_key in section.keys.items()
                 if trans_key.get_translation(self.source_lang) is None
             ]
             for key in dead_keys:
@@ -187,7 +185,7 @@ class I18nSync:
         # Load existing plist to preserve keys not in YAML
         existing = {}
         if file_path.exists():
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 existing = plistlib.load(f)
 
         # Merge new plurals into existing
@@ -196,7 +194,7 @@ class I18nSync:
 
             # Determine variable name and format key
             if format_key_value:
-                match = re.search(r'%(?:\d+\$)?#@(\w+)@', format_key_value)
+                match = re.search(r"%(?:\d+\$)?#@(\w+)@", format_key_value)
                 var_name = match.group(1) if match else "count"
             else:
                 var_name = "count"
@@ -217,25 +215,27 @@ class I18nSync:
             }
 
         # Write plist
-        with open(file_path, 'wb') as f:
+        with open(file_path, "wb") as f:
             plistlib.dump(existing, f, fmt=plistlib.FMT_XML)
 
         print(f"Updated {file_path}")
 
-    def _parse_strings_file(self, file_path: Path, lang: str, section_name: str) -> None:
-        content = file_path.read_text(encoding='utf-8')
+    def _parse_strings_file(
+        self, file_path: Path, lang: str, section_name: str
+    ) -> None:
+        content = file_path.read_text(encoding="utf-8")
         section = self.translations.add_section(section_name)
 
-        pattern = r'"([^"]+)"\s*=\s*"((?:[^"\\]|\\.)*)";\s*(?://.*)?'
+        pattern = r'"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)";\s*(?://.*)?'
         for match in re.finditer(pattern, content):
-            key = match.group(1)
+            key = self._unescape_strings_value(match.group(1))
             value_raw = match.group(2)
             value = self._unescape_strings_value(value_raw)
             section.add_key(key, lang, value)
 
     def _parse_stringsdict_file(self, file_path: Path, lang: str) -> None:
         """Parse iOS .stringsdict file and extract plurals."""
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             plist = plistlib.load(f)
 
         # Each key in plist is a plural key
@@ -246,7 +246,7 @@ class I18nSync:
             # Find the plural variable (e.g., "hours" in %#@hours@ or %2$#@hours@)
             format_key = entry.get("NSStringLocalizedFormatKey", "")
             # Extract variable name from %#@varname@ or %N$#@varname@
-            match = re.search(r'%(?:\d+\$)?#@(\w+)@', format_key)
+            match = re.search(r"%(?:\d+\$)?#@(\w+)@", format_key)
             if not match:
                 continue
 
@@ -275,10 +275,10 @@ class I18nSync:
                 self.plurals[key][lang] = plural_forms
 
     def _unescape_strings_value(self, value: str) -> str:
-        return value.replace('\\"', '"').replace('\\\\', '\\')
+        return value.replace('\\"', '"').replace("\\\\", "\\")
 
     def _escape_strings_value(self, value: str) -> str:
-        return value.replace('\\', '\\\\').replace('"', '\\"')
+        return value.replace("\\", "\\\\").replace('"', '\\"')
 
     def _write_strings_file(self, file_path: Path, lang: str, section) -> int:
         """Write translations to a .strings file, returning the missing count."""
@@ -295,69 +295,72 @@ class I18nSync:
         for key in sorted(section.keys.keys()):
             trans_key = section.keys[key]
             value = trans_key.get_translation(lang)
+            escaped_key = self._escape_strings_value(key)
             # An empty value is NOT a translation. iOS treats `"key" = "";` as a
             # valid string and does not fall back to Base, so the label renders
             # blank. Absent and empty therefore have to be reported the same way.
             if value is not None and value.strip():
                 escaped_value = self._escape_strings_value(value)
-                lines.append(f'"{key}" = "{escaped_value}";')
+                lines.append(f'"{escaped_key}" = "{escaped_value}";')
             else:
                 # Add empty value for missing translation
-                lines.append(f'"{key}" = "";')
+                lines.append(f'"{escaped_key}" = "";')
                 missing += 1
                 print(f"Warning: Missing '{section.name}.{key}' for language '{lang}'")
 
         # Write file
-        content = '\n'.join(lines)
-        if content and not content.endswith('\n'):
-            content += '\n'
+        content = "\n".join(lines)
+        if content and not content.endswith("\n"):
+            content += "\n"
 
-        file_path.write_text(content, encoding='utf-8')
+        file_path.write_text(content, encoding="utf-8")
         print(f"Updated {file_path}")
         return missing
 
-    def _get_file_header(self, file_path: Path, lang: str, file_type: str) -> Optional[str]:
+    def _get_file_header(
+        self, file_path: Path, lang: str, file_type: str
+    ) -> Optional[str]:
         """Extract header comment from existing file or create default."""
         if file_path.exists():
-            content = file_path.read_text(encoding='utf-8')
+            content = file_path.read_text(encoding="utf-8")
             # Extract everything before first "key" = "value" line
-            match = re.search(r'^"[^"]+"\s*=', content, re.MULTILINE)
+            match = re.search(r'^"(?:[^"\\]|\\.)*"\s*=', content, re.MULTILINE)
             if match:
-                header = content[:match.start()].rstrip()
+                header = content[: match.start()].rstrip()
                 if header:
                     return header
 
         # Default header with better language names
         lang_names = {
-            'en': 'English',
-            'es': 'Spanish',
-            'es-419': 'Spanish (Latin America)',
-            'es-MX': 'Spanish (Mexico)',
-            'fr': 'French',
-            'de': 'German',
-            'it': 'Italian',
-            'nl': 'Dutch',
-            'pt-PT': 'Portuguese (Portugal)',
-            'pt-BR': 'Portuguese (Brazil)',
-            'sv': 'Swedish',
-            'nb': 'Norwegian Bokmål',
-            'da': 'Danish',
-            'fi': 'Finnish',
-            'pl': 'Polish',
-            'el': 'Greek',
-            'ru': 'Russian',
-            'uk': 'Ukrainian',
-            'sr': 'Serbian (Cyrillic)',
-            'sr-Latn': 'Serbian (Latin)',
-            'tr': 'Turkish',
-            'th': 'Thai',
-            'vi': 'Vietnamese',
-            'id': 'Indonesian',
-            'ja': 'Japanese',
-            'ko': 'Korean',
-            'zh-Hans': 'Chinese (Simplified)',
-            'zh-Hant': 'Chinese (Traditional)',
-            'zh-HK': 'Chinese (Hong Kong)'
+            "en": "English",
+            "es": "Spanish",
+            "es-419": "Spanish (Latin America)",
+            "es-MX": "Spanish (Mexico)",
+            "fr": "French",
+            "de": "German",
+            "it": "Italian",
+            "nl": "Dutch",
+            "pt-PT": "Portuguese (Portugal)",
+            "pt-BR": "Portuguese (Brazil)",
+            "sv": "Swedish",
+            "nb": "Norwegian Bokmål",
+            "da": "Danish",
+            "fi": "Finnish",
+            "pl": "Polish",
+            "el": "Greek",
+            "ru": "Russian",
+            "uk": "Ukrainian",
+            "sr": "Serbian (Cyrillic)",
+            "sr-Latn": "Serbian (Latin)",
+            "tr": "Turkish",
+            "th": "Thai",
+            "vi": "Vietnamese",
+            "id": "Indonesian",
+            "ja": "Japanese",
+            "ko": "Korean",
+            "zh-Hans": "Chinese (Simplified)",
+            "zh-Hant": "Chinese (Traditional)",
+            "zh-HK": "Chinese (Hong Kong)",
         }
 
         lang_name = lang_names.get(lang, lang)
@@ -392,25 +395,28 @@ class I18nSync:
                 plurals_data[key] = {}
                 langs = self.plurals[key]
                 # Sort with 'en' first
-                if 'en' in langs:
-                    plurals_data[key]['en'] = langs['en']
+                if "en" in langs:
+                    plurals_data[key]["en"] = langs["en"]
                 for lang in sorted(langs.keys()):
-                    if lang != 'en':
+                    if lang != "en":
                         plurals_data[key][lang] = langs[lang]
             data["Plurals"] = plurals_data
 
-        with open(self.yaml_path, 'w', encoding='utf-8') as f:
-            yaml.dump(data, f,
-                     default_flow_style=False,
-                     allow_unicode=True,
-                     sort_keys=False,
-                     width=120)
+        with open(self.yaml_path, "w", encoding="utf-8") as f:
+            yaml.dump(
+                data,
+                f,
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+                width=120,
+            )
 
         print(f"Saved translations to {self.yaml_path}")
 
     def _load_yaml(self) -> None:
         """Load translations from YAML file."""
-        with open(self.yaml_path, 'r', encoding='utf-8') as f:
+        with open(self.yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         # Extract plurals section before creating TranslationsData
@@ -436,21 +442,26 @@ class I18nSync:
         for section_name, section in self.translations.sections.items():
             for key, trans_key in section.keys.items():
                 missing_langs = {
-                    lang for lang in languages
+                    lang
+                    for lang in languages
                     if not (trans_key.get_translation(lang) or "").strip()
                 }
                 if missing_langs:
                     if not missing_found:
                         print("\nMissing translations:")
                         missing_found = True
-                    print(f"  {section_name}.{key}: missing in {', '.join(sorted(missing_langs))}")
+                    print(
+                        f"  {section_name}.{key}: missing in {', '.join(sorted(missing_langs))}"
+                    )
 
         if not missing_found:
             print("\nAll keys present in all languages ✓")
 
     # ==================== Android support ====================
 
-    def apply_android(self, res_path: str = "app/src/main/res", default_lang: str = "en") -> None:
+    def apply_android(
+        self, res_path: str = "app/src/main/res", default_lang: str = "en"
+    ) -> None:
         """Apply translations from YAML to Android strings.xml files."""
         if not self.yaml_path.exists():
             raise FileNotFoundError(f"YAML file not found: {self.yaml_path}")
@@ -459,9 +470,12 @@ class I18nSync:
         res_path = Path(res_path)
 
         # Get all languages from both strings and plurals
-        languages = self.translations.get_all_languages()
+        languages = set()
+        for section_name, section in self.translations.sections.items():
+            if section_name != "AppShortcuts":
+                languages.update(section.get_languages())
         for plural_key, lang_data in self.plurals.items():
-            languages.update(lang_data.keys())
+            languages.update(lang for lang in lang_data if lang != "_format_key")
 
         for lang in languages:
             self._write_android_strings(res_path, lang, default_lang)
@@ -471,7 +485,9 @@ class I18nSync:
 
         print(f"Applied translations to {len(languages)} Android languages")
 
-    def _write_android_strings(self, res_path: Path, lang: str, default_lang: str) -> None:
+    def _write_android_strings(
+        self, res_path: Path, lang: str, default_lang: str
+    ) -> None:
         """Write strings.xml for a specific language."""
         # Determine folder name
         if lang == default_lang:
@@ -492,7 +508,9 @@ class I18nSync:
 
         # Collect all keys from all sections for this language
         all_keys = {}
-        for section in self.translations.sections.values():
+        for section_name, section in self.translations.sections.items():
+            if section_name == "AppShortcuts":
+                continue
             for key, trans_key in section.keys.items():
                 value = trans_key.get_translation(lang)
                 if value is not None:
@@ -518,12 +536,14 @@ class I18nSync:
                         # If _format_key exists, substitute the plural form into it
                         if format_key:
                             # Replace %#@varname@ with the plural value
-                            full_value = re.sub(r'%#@\w+@', plural_value, format_key)
+                            full_value = re.sub(r"%#@\w+@", plural_value, format_key)
                         else:
                             full_value = plural_value
                         escaped_value = self._escape_android_xml(full_value)
-                        lines.append(f'        <item quantity="{quantity}">{escaped_value}</item>')
-                lines.append('    </plurals>')
+                        lines.append(
+                            f'        <item quantity="{quantity}">{escaped_value}</item>'
+                        )
+                lines.append("    </plurals>")
 
         lines.append("</resources>")
 
@@ -551,11 +571,11 @@ class I18nSync:
         - Already positional specifiers: %1$@ -> %1$s (convert type only)
         """
         # First, convert already-positional iOS specifiers: %1$@ -> %1$s
-        value = re.sub(r'(%\d+\$)@', r'\1s', value)
+        value = re.sub(r"(%\d+\$)@", r"\1s", value)
 
         # Pattern to match non-positional format specifiers (excluding %%)
         # Matches: %@, %d, %f, %.2f, %ld, etc. but not already positional like %1$d
-        pattern = r'%(?!\d+\$)(\.\d+)?(@|[dfiulxXoOeEgGsScCpPaAbBhHnN]|l[diu])'
+        pattern = r"%(?!\d+\$)(\.\d+)?(@|[dfiulxXoOeEgGsScCpPaAbBhHnN]|l[diu])"
 
         # First, find all format specifiers
         matches = list(re.finditer(pattern, value))
@@ -565,7 +585,11 @@ class I18nSync:
 
         # If only one specifier, just convert %@ to %s without positional
         if len(matches) == 1:
-            return re.sub(pattern, lambda m: f'%{m.group(1) or ""}{self._ios_to_android_type(m.group(2))}', value)
+            return re.sub(
+                pattern,
+                lambda m: f"%{m.group(1) or ''}{self._ios_to_android_type(m.group(2))}",
+                value,
+            )
 
         # Multiple specifiers: add positional arguments
         result = value
@@ -575,7 +599,7 @@ class I18nSync:
             end = match.end() + offset
             precision = match.group(1) or ""
             type_spec = self._ios_to_android_type(match.group(2))
-            replacement = f'%{i}${precision}{type_spec}'
+            replacement = f"%{i}${precision}{type_spec}"
             result = result[:start] + replacement + result[end:]
             offset += len(replacement) - (match.end() - match.start())
 
@@ -583,8 +607,8 @@ class I18nSync:
 
     def _ios_to_android_type(self, ios_type: str) -> str:
         """Convert iOS type specifier to Android."""
-        if ios_type == '@':
-            return 's'
+        if ios_type == "@":
+            return "s"
         return ios_type
 
     def _write_locales_config(self, res_path: Path, languages: Set[str]) -> None:
@@ -608,10 +632,10 @@ class I18nSync:
         for locale in sorted(android_locales):
             lines.append(f'    <locale android:name="{locale}" />')
 
-        lines.append('</locale-config>')
+        lines.append("</locale-config>")
 
-        content = '\n'.join(lines) + '\n'
-        config_file.write_text(content, encoding='utf-8')
+        content = "\n".join(lines) + "\n"
+        config_file.write_text(content, encoding="utf-8")
         print(f"Generated {config_file}")
 
     def _ios_to_android_locale(self, ios_lang: str) -> str:

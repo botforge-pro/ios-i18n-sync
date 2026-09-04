@@ -21,49 +21,58 @@ def temp_dir():
 def sample_resources(temp_dir):
     """Create sample .strings files for testing."""
     resources = temp_dir / "Resources"
-    
+
     # English
     en_dir = resources / "en.lproj"
     en_dir.mkdir(parents=True)
-    (en_dir / "Localizable.strings").write_text("""/* 
+    (en_dir / "Localizable.strings").write_text(
+        """/*
   Localizable.strings
-  
+
   English
 */
 
 "cancel" = "Cancel";
 "save" = "Save";
 "delete" = "Delete";
-""", encoding='utf-8')
-    
+""",
+        encoding="utf-8",
+    )
+
     # Russian
     ru_dir = resources / "ru.lproj"
     ru_dir.mkdir(parents=True)
-    (ru_dir / "Localizable.strings").write_text("""/* 
+    (ru_dir / "Localizable.strings").write_text(
+        """/*
   Localizable.strings
-  
+
   Russian
 */
 
 "cancel" = "Отмена";
 "save" = "Сохранить";
 // Missing "delete" key
-""", encoding='utf-8')
-    
+""",
+        encoding="utf-8",
+    )
+
     # German
     de_dir = resources / "de.lproj"
     de_dir.mkdir(parents=True)
-    (de_dir / "Localizable.strings").write_text("""/* 
+    (de_dir / "Localizable.strings").write_text(
+        """/*
   Localizable.strings
-  
+
   German
 */
 
 "cancel" = "Abbrechen";
 "save" = "Speichern";
 "delete" = "Löschen";
-""", encoding='utf-8')
-    
+""",
+        encoding="utf-8",
+    )
+
     return resources
 
 
@@ -76,20 +85,23 @@ class TestExtract:
         en_dir = resources / "en.lproj"
         en_dir.mkdir(parents=True)
         # String with escaped quotes inside
-        (en_dir / "Localizable.strings").write_text("""/*
+        (en_dir / "Localizable.strings").write_text(
+            """/*
   Localizable.strings
 
   English
 */
 "reportCurrent" = "Report \\"%@\\"";
 "reportPrevious" = "Report previous \\"%@\\"";
-""", encoding='utf-8')
+""",
+            encoding="utf-8",
+        )
 
         yaml_path = temp_dir / "translations.yaml"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
         sync.extract()
 
-        with open(yaml_path, 'r', encoding='utf-8') as f:
+        with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         assert "Localizable" in data
@@ -102,14 +114,14 @@ class TestExtract:
         """Test basic extraction functionality."""
         yaml_path = temp_dir / "translations.yaml"
         sync = I18nSync(resources_path=sample_resources, yaml_path=yaml_path)
-        
+
         sync.extract()
-        
+
         assert yaml_path.exists()
-        
-        with open(yaml_path, 'r', encoding='utf-8') as f:
+
+        with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        
+
         assert "Localizable" in data
         assert "cancel" in data["Localizable"]
         assert data["Localizable"]["cancel"]["en"] == "Cancel"
@@ -126,31 +138,103 @@ class TestExtract:
         assert data["Localizable"]["delete"]["de"] == "Löschen"
         # Russian is missing delete key
         assert "ru" not in data["Localizable"]["delete"]
-    
+
+    def test_extract_app_shortcuts(self, sample_resources, temp_dir):
+        en_file = sample_resources / "en.lproj" / "AppShortcuts.strings"
+        en_file.write_text(
+            '"Generate ${applicationName}" = "Generate ${applicationName}";\n',
+            encoding="utf-8",
+        )
+        ru_file = sample_resources / "ru.lproj" / "AppShortcuts.strings"
+        ru_file.write_text(
+            '"Generate ${applicationName}" = "Сгенерируй ${applicationName}";\n',
+            encoding="utf-8",
+        )
+
+        yaml_path = temp_dir / "translations.yaml"
+        I18nSync(resources_path=sample_resources, yaml_path=yaml_path).extract()
+
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        phrase = data["AppShortcuts"]["Generate ${applicationName}"]
+        assert phrase == {
+            "en": "Generate ${applicationName}",
+            "ru": "Сгенерируй ${applicationName}",
+        }
+
+    def test_app_shortcuts_round_trip_preserves_quotes_in_keys(self, temp_dir):
+        resources = temp_dir / "Resources"
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+        source = 'Open "${applicationName}"'
+        (en_dir / "AppShortcuts.strings").write_text(
+            '"Open \\"${applicationName}\\"" = "Open \\"${applicationName}\\"";\n',
+            encoding="utf-8",
+        )
+
+        yaml_path = temp_dir / "translations.yaml"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.extract()
+        sync.apply()
+
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        assert data["AppShortcuts"][source]["en"] == source
+        assert (
+            (en_dir / "AppShortcuts.strings")
+            .read_text(encoding="utf-8")
+            .endswith(
+                '"Open \\"${applicationName}\\"" = "Open \\"${applicationName}\\"";\n'
+            )
+        )
+
+    def test_app_shortcuts_round_trip_preserves_header_before_quoted_key(
+        self, temp_dir
+    ):
+        resources = temp_dir / "Resources"
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+        file_path = en_dir / "AppShortcuts.strings"
+        header = "/* App shortcut phrases */"
+        file_path.write_text(
+            header
+            + '\n"Open \\"${applicationName}\\"" = "Open \\"${applicationName}\\"";\n'
+            + '"Generate ${applicationName}" = "Generate ${applicationName}";\n',
+            encoding="utf-8",
+        )
+
+        yaml_path = temp_dir / "translations.yaml"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.extract()
+        sync.apply()
+
+        content = file_path.read_text(encoding="utf-8")
+        assert content.startswith(header + "\n")
+        assert content.count('"Open \\"${applicationName}\\"" =') == 1
+        assert content.count('"Generate ${applicationName}" =') == 1
+
     def test_extract_no_resources(self, temp_dir):
         """Test extraction fails gracefully when no resources found."""
         yaml_path = temp_dir / "translations.yaml"
         sync = I18nSync(resources_path=temp_dir / "nonexistent", yaml_path=yaml_path)
-        
+
         with pytest.raises(FileNotFoundError):
             sync.extract()
-    
+
     def test_extract_empty_strings_file(self, temp_dir):
         """Test extraction handles empty .strings files."""
         resources = temp_dir / "Resources"
         en_dir = resources / "en.lproj"
         en_dir.mkdir(parents=True)
-        (en_dir / "Localizable.strings").write_text("", encoding='utf-8')
-        
+        (en_dir / "Localizable.strings").write_text("", encoding="utf-8")
+
         yaml_path = temp_dir / "translations.yaml"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
-        
+
         sync.extract()
-        
+
         assert yaml_path.exists()
-        with open(yaml_path, 'r', encoding='utf-8') as f:
+        with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        
+
         assert data == {"Localizable": {}} or data is None
 
 
@@ -168,7 +252,7 @@ class TestApply:
         section.add_key("reportPrevious", "en", 'Report previous "%@"')
         section.add_key("reportPrevious", "es", 'Informar anterior "%@"')
 
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
 
         # Apply
@@ -179,14 +263,14 @@ class TestApply:
         # Check English file has properly escaped quotes
         en_file = resources / "en.lproj" / "Localizable.strings"
         assert en_file.exists()
-        content = en_file.read_text(encoding='utf-8')
+        content = en_file.read_text(encoding="utf-8")
         assert '"reportCurrent" = "Report \\"%@\\"";' in content
         assert '"reportPrevious" = "Report previous \\"%@\\"";' in content
 
         # Check Spanish file
         es_file = resources / "es.lproj" / "Localizable.strings"
         assert es_file.exists()
-        content = es_file.read_text(encoding='utf-8')
+        content = es_file.read_text(encoding="utf-8")
         assert '"reportCurrent" = "Informar \\"%@\\"";' in content
         assert '"reportPrevious" = "Informar anterior \\"%@\\"";' in content
 
@@ -203,35 +287,63 @@ class TestApply:
         section.add_key("save", "ru", "Сохранить")
         section.add_key("save", "de", "Speichern")
 
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
-        
+
         # Apply
         resources = temp_dir / "Resources"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
         sync.apply()
-        
+
         # Check English file
         en_file = resources / "en.lproj" / "Localizable.strings"
         assert en_file.exists()
-        content = en_file.read_text(encoding='utf-8')
+        content = en_file.read_text(encoding="utf-8")
         assert '"cancel" = "Cancel";' in content
         assert '"save" = "Save";' in content
-        
+
         # Check Russian file
         ru_file = resources / "ru.lproj" / "Localizable.strings"
         assert ru_file.exists()
-        content = ru_file.read_text(encoding='utf-8')
+        content = ru_file.read_text(encoding="utf-8")
         assert '"cancel" = "Отмена";' in content
         assert '"save" = "Сохранить";' in content
-        
+
         # Check German file
         de_file = resources / "de.lproj" / "Localizable.strings"
         assert de_file.exists()
-        content = de_file.read_text(encoding='utf-8')
+        content = de_file.read_text(encoding="utf-8")
         assert '"cancel" = "Abbrechen";' in content
         assert '"save" = "Speichern";' in content
-    
+
+    def test_apply_app_shortcuts(self, temp_dir):
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_path.write_text(
+            yaml.dump(
+                {
+                    "AppShortcuts": {
+                        "Generate ${applicationName}": {
+                            "en": "Generate ${applicationName}",
+                            "ru": "Сгенерируй ${applicationName}",
+                        }
+                    }
+                },
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
+
+        resources = temp_dir / "Resources"
+        I18nSync(resources_path=resources, yaml_path=yaml_path).apply()
+
+        assert (
+            (resources / "ru.lproj" / "AppShortcuts.strings")
+            .read_text(encoding="utf-8")
+            .endswith(
+                '"Generate ${applicationName}" = "Сгенерируй ${applicationName}";\n'
+            )
+        )
+
     def test_apply_missing_translation(self, temp_dir):
         """Test apply handles missing translations gracefully."""
         yaml_path = temp_dir / "translations.yaml"
@@ -245,26 +357,26 @@ class TestApply:
         section.add_key("save", "ru", "Сохранить")
         # Missing German translation for "save"
 
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
-        
+
         resources = temp_dir / "Resources"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
         sync.apply()
-        
+
         # German file should have empty value for missing key
         de_file = resources / "de.lproj" / "Localizable.strings"
         assert de_file.exists()
-        content = de_file.read_text(encoding='utf-8')
+        content = de_file.read_text(encoding="utf-8")
         assert '"cancel" = "Abbrechen";' in content
         assert '"save" = "";' in content  # Missing translation gets empty value
-    
+
     def test_apply_no_yaml(self, temp_dir):
         """Test apply fails gracefully when YAML doesn't exist."""
         resources = temp_dir / "Resources"
         yaml_path = temp_dir / "nonexistent.yaml"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
-        
+
         with pytest.raises(FileNotFoundError):
             sync.apply()
 
@@ -279,21 +391,21 @@ class TestDeadKeyRemoval:
         en_dir = resources / "en.lproj"
         en_dir.mkdir(parents=True)
         (en_dir / "Localizable.strings").write_text(
-            '"cancel" = "Cancel";\n"save" = "Save";\n', encoding='utf-8'
+            '"cancel" = "Cancel";\n"save" = "Save";\n', encoding="utf-8"
         )
 
         ru_dir = resources / "ru.lproj"
         ru_dir.mkdir(parents=True)
         (ru_dir / "Localizable.strings").write_text(
             '"cancel" = "Отмена";\n"save" = "Сохранить";\n"deadKey" = "Мёртвый ключ";\n',
-            encoding='utf-8',
+            encoding="utf-8",
         )
 
         yaml_path = temp_dir / "translations.yaml"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
         sync.extract()
 
-        with open(yaml_path, 'r', encoding='utf-8') as f:
+        with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         assert "cancel" in data["Localizable"]
@@ -307,14 +419,14 @@ class TestDeadKeyRemoval:
         en_dir = resources / "en.lproj"
         en_dir.mkdir(parents=True)
         (en_dir / "Localizable.strings").write_text(
-            '"cancel" = "Cancel";\n"save" = "Save";\n', encoding='utf-8'
+            '"cancel" = "Cancel";\n"save" = "Save";\n', encoding="utf-8"
         )
 
         ru_dir = resources / "ru.lproj"
         ru_dir.mkdir(parents=True)
         (ru_dir / "Localizable.strings").write_text(
             '"cancel" = "Отмена";\n"save" = "Сохранить";\n"deadKey" = "Мёртвый ключ";\n',
-            encoding='utf-8',
+            encoding="utf-8",
         )
 
         yaml_path = temp_dir / "translations.yaml"
@@ -322,12 +434,16 @@ class TestDeadKeyRemoval:
         sync.extract()
         sync.apply()
 
-        ru_content = (resources / "ru.lproj" / "Localizable.strings").read_text(encoding='utf-8')
+        ru_content = (resources / "ru.lproj" / "Localizable.strings").read_text(
+            encoding="utf-8"
+        )
         assert "deadKey" not in ru_content
         assert '"cancel" = "Отмена";' in ru_content
         assert '"save" = "Сохранить";' in ru_content
 
-        en_content = (resources / "en.lproj" / "Localizable.strings").read_text(encoding='utf-8')
+        en_content = (resources / "en.lproj" / "Localizable.strings").read_text(
+            encoding="utf-8"
+        )
         assert "deadKey" not in en_content
 
 
@@ -338,29 +454,29 @@ class TestRoundTrip:
         """Test that extract -> apply preserves data."""
         yaml_path = temp_dir / "translations.yaml"
         sync = I18nSync(resources_path=sample_resources, yaml_path=yaml_path)
-        
+
         # Extract
         sync.extract()
-        
+
         # Modify to add missing translation
-        with open(yaml_path, 'r', encoding='utf-8') as f:
+        with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         # Add missing Russian translation for "delete"
         if "Localizable" in data and "delete" in data["Localizable"]:
             data["Localizable"]["delete"]["ru"] = "Удалить"
 
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
-        
+
         # Apply back
         sync.apply()
-        
+
         # Check Russian now has delete
         ru_file = sample_resources / "ru.lproj" / "Localizable.strings"
-        content = ru_file.read_text(encoding='utf-8')
+        content = ru_file.read_text(encoding="utf-8")
         assert '"delete" = "Удалить";' in content
-        
+
         # Original keys still there
         assert '"cancel" = "Отмена";' in content
         assert '"save" = "Сохранить";' in content
@@ -378,7 +494,7 @@ class TestApplyAndroid:
                 "save": {"en": "Save", "ru": "Сохранить", "de": "Speichern"},
             }
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
@@ -388,7 +504,7 @@ class TestApplyAndroid:
         # Check default (English) in values/
         default_file = res_path / "values" / "strings.xml"
         assert default_file.exists()
-        content = default_file.read_text(encoding='utf-8')
+        content = default_file.read_text(encoding="utf-8")
         assert '<?xml version="1.0" encoding="utf-8"?>' in content
         assert '<string name="cancel">Cancel</string>' in content
         assert '<string name="save">Save</string>' in content
@@ -396,16 +512,65 @@ class TestApplyAndroid:
         # Check Russian in values-ru/
         ru_file = res_path / "values-ru" / "strings.xml"
         assert ru_file.exists()
-        content = ru_file.read_text(encoding='utf-8')
+        content = ru_file.read_text(encoding="utf-8")
         assert '<string name="cancel">Отмена</string>' in content
         assert '<string name="save">Сохранить</string>' in content
 
         # Check German in values-de/
         de_file = res_path / "values-de" / "strings.xml"
         assert de_file.exists()
-        content = de_file.read_text(encoding='utf-8')
+        content = de_file.read_text(encoding="utf-8")
         assert '<string name="cancel">Abbrechen</string>' in content
         assert '<string name="save">Speichern</string>' in content
+
+    def test_apply_android_ignores_app_shortcuts(self, temp_dir):
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_path.write_text(
+            yaml.dump(
+                {
+                    "Localizable": {"save": {"en": "Save"}},
+                    "AppShortcuts": {
+                        "Generate ${applicationName}": {
+                            "en": "Generate ${applicationName}",
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        res_path = temp_dir / "res"
+        I18nSync(yaml_path=yaml_path).apply_android(res_path=res_path)
+
+        content = (res_path / "values" / "strings.xml").read_text(encoding="utf-8")
+        assert '<string name="save">Save</string>' in content
+        assert "applicationName" not in content
+
+    def test_apply_android_ignores_app_shortcuts_only_locale(self, temp_dir):
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_path.write_text(
+            yaml.dump(
+                {
+                    "Localizable": {"save": {"en": "Save"}},
+                    "AppShortcuts": {
+                        "Generate ${applicationName}": {
+                            "en": "Generate ${applicationName}",
+                            "ru": "Сгенерируй ${applicationName}",
+                        }
+                    },
+                },
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
+
+        res_path = temp_dir / "res"
+        I18nSync(yaml_path=yaml_path).apply_android(res_path=res_path)
+
+        assert not (res_path / "values-ru").exists()
+        locales = (res_path / "xml" / "locales_config.xml").read_text(encoding="utf-8")
+        assert 'android:name="en"' in locales
+        assert 'android:name="ru"' not in locales
 
     def test_apply_android_language_mapping(self, temp_dir):
         """Test iOS to Android language code mapping."""
@@ -426,7 +591,7 @@ class TestApplyAndroid:
                 }
             }
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
@@ -457,19 +622,19 @@ class TestApplyAndroid:
                 "greater_than": {"en": "2 > 1"},
             }
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
         sync = I18nSync(yaml_path=yaml_path)
         sync.apply_android(res_path=res_path, default_lang="en")
 
-        content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
-        assert "<string name=\"apostrophe\">It\\'s working</string>" in content
-        assert "<string name=\"ampersand\">Tom &amp; Jerry</string>" in content
+        content = (res_path / "values" / "strings.xml").read_text(encoding="utf-8")
+        assert '<string name="apostrophe">It\\\'s working</string>' in content
+        assert '<string name="ampersand">Tom &amp; Jerry</string>' in content
         assert '<string name="quotes">Say \\"Hello\\"</string>' in content
-        assert "<string name=\"less_than\">1 &lt; 2</string>" in content
-        assert "<string name=\"greater_than\">2 &gt; 1</string>" in content
+        assert '<string name="less_than">1 &lt; 2</string>' in content
+        assert '<string name="greater_than">2 &gt; 1</string>' in content
 
     def test_apply_android_missing_translation(self, temp_dir):
         """Test that missing translations are skipped (not included in that language file)."""
@@ -480,7 +645,7 @@ class TestApplyAndroid:
                 "save": {"en": "Save"},  # Missing Russian
             }
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
@@ -488,9 +653,11 @@ class TestApplyAndroid:
         sync.apply_android(res_path=res_path, default_lang="en")
 
         # Russian file should only have cancel, not save
-        ru_content = (res_path / "values-ru" / "strings.xml").read_text(encoding='utf-8')
+        ru_content = (res_path / "values-ru" / "strings.xml").read_text(
+            encoding="utf-8"
+        )
         assert '<string name="cancel">Отмена</string>' in ru_content
-        assert 'save' not in ru_content
+        assert "save" not in ru_content
 
     def test_apply_android_no_yaml(self, temp_dir):
         """Test apply_android fails gracefully when YAML doesn't exist."""
@@ -511,39 +678,44 @@ class TestApplyAndroid:
                 "mango": {"en": "Mango"},
             }
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
         sync = I18nSync(yaml_path=yaml_path)
         sync.apply_android(res_path=res_path, default_lang="en")
 
-        content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
+        content = (res_path / "values" / "strings.xml").read_text(encoding="utf-8")
         apple_pos = content.find("apple")
         mango_pos = content.find("mango")
         zebra_pos = content.find("zebra")
         assert apple_pos < mango_pos < zebra_pos
 
-    @pytest.mark.parametrize("ios_format,android_format", [
-        # Single %@ -> %s
-        ("%@ files", "%s files"),
-        # Multiple format specifiers get positional args
-        ("%d files of %d", "%1$d files of %2$d"),
-        ("%d files of %d (%@)", "%1$d files of %2$d (%3$s)"),
-        # Mixed types
-        ("%@ has %d items", "%1$s has %2$d items"),
-        # Already positional - keep as is (convert @ to s)
-        ("%1$d of %2$d", "%1$d of %2$d"),
-        ("%1$@ to %2$@", "%1$s to %2$s"),
-        ("%1$@ has %2$d items (%3$@)", "%1$s has %2$d items (%3$s)"),
-        # Single specifier - no positional needed
-        ("%d items", "%d items"),
-        ("%@ name", "%s name"),
-        # Float
-        ("%.2f MB", "%.2f MB"),
-        ("%d of %d (%.1f%%)", "%1$d of %2$d (%3$.1f%%)"),
-    ])
-    def test_apply_android_format_specifiers(self, temp_dir, ios_format, android_format):
+    @pytest.mark.parametrize(
+        "ios_format,android_format",
+        [
+            # Single %@ -> %s
+            ("%@ files", "%s files"),
+            # Multiple format specifiers get positional args
+            ("%d files of %d", "%1$d files of %2$d"),
+            ("%d files of %d (%@)", "%1$d files of %2$d (%3$s)"),
+            # Mixed types
+            ("%@ has %d items", "%1$s has %2$d items"),
+            # Already positional - keep as is (convert @ to s)
+            ("%1$d of %2$d", "%1$d of %2$d"),
+            ("%1$@ to %2$@", "%1$s to %2$s"),
+            ("%1$@ has %2$d items (%3$@)", "%1$s has %2$d items (%3$s)"),
+            # Single specifier - no positional needed
+            ("%d items", "%d items"),
+            ("%@ name", "%s name"),
+            # Float
+            ("%.2f MB", "%.2f MB"),
+            ("%d of %d (%.1f%%)", "%1$d of %2$d (%3$.1f%%)"),
+        ],
+    )
+    def test_apply_android_format_specifiers(
+        self, temp_dir, ios_format, android_format
+    ):
         """Test iOS format specifiers are converted to Android format."""
         yaml_path = temp_dir / "translations.yaml"
         yaml_data = {
@@ -551,14 +723,14 @@ class TestApplyAndroid:
                 "testKey": {"en": ios_format},
             }
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
         sync = I18nSync(yaml_path=yaml_path)
         sync.apply_android(res_path=res_path, default_lang="en")
 
-        content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
+        content = (res_path / "values" / "strings.xml").read_text(encoding="utf-8")
         assert f'<string name="testKey">{android_format}</string>' in content
 
 
@@ -572,7 +744,8 @@ class TestStringsdict:
         en_dir.mkdir(parents=True)
 
         # Create English stringsdict
-        (en_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+        (en_dir / "Localizable.stringsdict").write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -593,12 +766,15 @@ class TestStringsdict:
         </dict>
     </dict>
 </dict>
-</plist>""", encoding='utf-8')
+</plist>""",
+            encoding="utf-8",
+        )
 
         # Create Russian stringsdict with more plural forms
         ru_dir = resources / "ru.lproj"
         ru_dir.mkdir(parents=True)
-        (ru_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+        (ru_dir / "Localizable.stringsdict").write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -623,13 +799,15 @@ class TestStringsdict:
         </dict>
     </dict>
 </dict>
-</plist>""", encoding='utf-8')
+</plist>""",
+            encoding="utf-8",
+        )
 
         yaml_path = temp_dir / "translations.yaml"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
         sync.extract()
 
-        with open(yaml_path, 'r', encoding='utf-8') as f:
+        with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         # Check plurals section exists
@@ -658,15 +836,25 @@ class TestStringsdict:
             "Plurals": {
                 "flowTimeHours": {
                     "en": {"one": "%d hour", "other": "%d hours"},
-                    "ru": {"one": "%d час", "few": "%d часа", "many": "%d часов", "other": "%d часов"},
+                    "ru": {
+                        "one": "%d час",
+                        "few": "%d часа",
+                        "many": "%d часов",
+                        "other": "%d часов",
+                    },
                 },
                 "flowTimeMinutes": {
                     "en": {"one": "%d minute", "other": "%d minutes"},
-                    "ru": {"one": "%d минуту", "few": "%d минуты", "many": "%d минут", "other": "%d минут"},
+                    "ru": {
+                        "one": "%d минуту",
+                        "few": "%d минуты",
+                        "many": "%d минут",
+                        "other": "%d минут",
+                    },
                 },
-            }
+            },
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
@@ -674,14 +862,16 @@ class TestStringsdict:
         sync.apply_android(res_path=res_path, default_lang="en")
 
         # Check English plurals
-        en_content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
+        en_content = (res_path / "values" / "strings.xml").read_text(encoding="utf-8")
         assert '<plurals name="flowTimeHours">' in en_content
         assert '<item quantity="one">%d hour</item>' in en_content
         assert '<item quantity="other">%d hours</item>' in en_content
         assert '<plurals name="flowTimeMinutes">' in en_content
 
         # Check Russian plurals (has few/many)
-        ru_content = (res_path / "values-ru" / "strings.xml").read_text(encoding='utf-8')
+        ru_content = (res_path / "values-ru" / "strings.xml").read_text(
+            encoding="utf-8"
+        )
         assert '<plurals name="flowTimeHours">' in ru_content
         assert '<item quantity="one">%d час</item>' in ru_content
         assert '<item quantity="few">%d часа</item>' in ru_content
@@ -698,16 +888,16 @@ class TestStringsdict:
                 },
             }
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
         sync = I18nSync(yaml_path=yaml_path)
         sync.apply_android(res_path=res_path, default_lang="en")
 
-        content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
-        assert "<item quantity=\"one\">%d file\\'s size</item>" in content
-        assert "<item quantity=\"other\">%d files\\' sizes</item>" in content
+        content = (res_path / "values" / "strings.xml").read_text(encoding="utf-8")
+        assert '<item quantity="one">%d file\\\'s size</item>' in content
+        assert '<item quantity="other">%d files\\\' sizes</item>' in content
 
 
 class TestLocalesConfig:
@@ -721,7 +911,7 @@ class TestLocalesConfig:
                 "hello": {"en": "Hello", "ru": "Привет", "de": "Hallo"},
             }
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
@@ -732,30 +922,38 @@ class TestLocalesConfig:
         config_file = res_path / "xml" / "locales_config.xml"
         assert config_file.exists()
 
-        content = config_file.read_text(encoding='utf-8')
+        content = config_file.read_text(encoding="utf-8")
         assert '<?xml version="1.0" encoding="utf-8"?>' in content
-        assert '<locale-config xmlns:android="http://schemas.android.com/apk/res/android">' in content
+        assert (
+            '<locale-config xmlns:android="http://schemas.android.com/apk/res/android">'
+            in content
+        )
         assert '<locale android:name="de" />' in content
         assert '<locale android:name="en" />' in content
         assert '<locale android:name="ru" />' in content
-        assert '</locale-config>' in content
+        assert "</locale-config>" in content
 
     def test_locales_config_sorted_alphabetically(self, temp_dir):
         """Test that locales are sorted alphabetically."""
         yaml_path = temp_dir / "translations.yaml"
         yaml_data = {
             "Localizable": {
-                "hello": {"zh-Hans": "你好", "en": "Hello", "fr": "Bonjour", "ar": "مرحبا"},
+                "hello": {
+                    "zh-Hans": "你好",
+                    "en": "Hello",
+                    "fr": "Bonjour",
+                    "ar": "مرحبا",
+                },
             }
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
         sync = I18nSync(yaml_path=yaml_path)
         sync.apply_android(res_path=res_path, default_lang="en")
 
-        content = (res_path / "xml" / "locales_config.xml").read_text(encoding='utf-8')
+        content = (res_path / "xml" / "locales_config.xml").read_text(encoding="utf-8")
         ar_pos = content.find('android:name="ar"')
         en_pos = content.find('android:name="en"')
         fr_pos = content.find('android:name="fr"')
@@ -776,14 +974,14 @@ class TestLocalesConfig:
                 },
             }
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
         sync = I18nSync(yaml_path=yaml_path)
         sync.apply_android(res_path=res_path, default_lang="en")
 
-        content = (res_path / "xml" / "locales_config.xml").read_text(encoding='utf-8')
+        content = (res_path / "xml" / "locales_config.xml").read_text(encoding="utf-8")
         assert '<locale android:name="en" />' in content
         assert '<locale android:name="zh-CN" />' in content  # zh-Hans -> zh-CN
         assert '<locale android:name="zh-TW" />' in content  # zh-Hant -> zh-TW
@@ -804,11 +1002,16 @@ class TestApplyStringsdict:
             "Plurals": {
                 "items.count": {
                     "en": {"one": "%d item", "other": "%d items"},
-                    "ru": {"one": "%d элемент", "few": "%d элемента", "many": "%d элементов", "other": "%d элементов"},
+                    "ru": {
+                        "one": "%d элемент",
+                        "few": "%d элемента",
+                        "many": "%d элементов",
+                        "other": "%d элементов",
+                    },
                 },
             },
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         resources = temp_dir / "Resources"
@@ -820,7 +1023,8 @@ class TestApplyStringsdict:
         assert en_stringsdict.exists(), "English .stringsdict not created"
 
         import plistlib
-        with open(en_stringsdict, 'rb') as f:
+
+        with open(en_stringsdict, "rb") as f:
             plist = plistlib.load(f)
 
         assert "items.count" in plist
@@ -836,7 +1040,7 @@ class TestApplyStringsdict:
         ru_stringsdict = resources / "ru.lproj" / "Localizable.stringsdict"
         assert ru_stringsdict.exists(), "Russian .stringsdict not created"
 
-        with open(ru_stringsdict, 'rb') as f:
+        with open(ru_stringsdict, "rb") as f:
             plist = plistlib.load(f)
 
         ru_plural = plist["items.count"]["count"]
@@ -852,7 +1056,8 @@ class TestApplyStringsdict:
         en_dir.mkdir(parents=True)
 
         # Pre-existing stringsdict with a key
-        (en_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+        (en_dir / "Localizable.stringsdict").write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -873,7 +1078,9 @@ class TestApplyStringsdict:
 \t\t</dict>
 \t</dict>
 </dict>
-</plist>""", encoding='utf-8')
+</plist>""",
+            encoding="utf-8",
+        )
 
         yaml_path = temp_dir / "translations.yaml"
         yaml_data = {
@@ -883,14 +1090,15 @@ class TestApplyStringsdict:
                 },
             },
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
         sync.apply()
 
         import plistlib
-        with open(en_dir / "Localizable.stringsdict", 'rb') as f:
+
+        with open(en_dir / "Localizable.stringsdict", "rb") as f:
             plist = plistlib.load(f)
 
         # Both keys should exist
@@ -905,8 +1113,11 @@ class TestApplyStringsdict:
         en_dir = resources / "en.lproj"
         en_dir.mkdir(parents=True)
 
-        (en_dir / "Localizable.strings").write_text('"hello" = "Hello";\n', encoding='utf-8')
-        (en_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+        (en_dir / "Localizable.strings").write_text(
+            '"hello" = "Hello";\n', encoding="utf-8"
+        )
+        (en_dir / "Localizable.stringsdict").write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -927,14 +1138,16 @@ class TestApplyStringsdict:
 \t\t</dict>
 \t</dict>
 </dict>
-</plist>""", encoding='utf-8')
+</plist>""",
+            encoding="utf-8",
+        )
 
         yaml_path = temp_dir / "translations.yaml"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
         sync.extract()
 
         # Add Russian plurals to YAML
-        with open(yaml_path, 'r', encoding='utf-8') as f:
+        with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         data["Plurals"]["days.count"]["ru"] = {
@@ -944,7 +1157,7 @@ class TestApplyStringsdict:
             "other": "%d дней",
         }
 
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True)
 
         # Apply
@@ -952,10 +1165,11 @@ class TestApplyStringsdict:
 
         # Russian stringsdict should now exist
         import plistlib
+
         ru_stringsdict = resources / "ru.lproj" / "Localizable.stringsdict"
         assert ru_stringsdict.exists()
 
-        with open(ru_stringsdict, 'rb') as f:
+        with open(ru_stringsdict, "rb") as f:
             plist = plistlib.load(f)
 
         assert "days.count" in plist
@@ -973,7 +1187,8 @@ class TestStringsdictWithFormatKey:
         # Create English stringsdict
         en_dir = resources / "en.lproj"
         en_dir.mkdir(parents=True)
-        (en_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+        (en_dir / "Localizable.stringsdict").write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -994,12 +1209,15 @@ class TestStringsdictWithFormatKey:
         </dict>
     </dict>
 </dict>
-</plist>""", encoding='utf-8')
+</plist>""",
+            encoding="utf-8",
+        )
 
         # Create German stringsdict with different format_key
         de_dir = resources / "de.lproj"
         de_dir.mkdir(parents=True)
-        (de_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+        (de_dir / "Localizable.stringsdict").write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -1020,13 +1238,15 @@ class TestStringsdictWithFormatKey:
         </dict>
     </dict>
 </dict>
-</plist>""", encoding='utf-8')
+</plist>""",
+            encoding="utf-8",
+        )
 
         yaml_path = temp_dir / "translations.yaml"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
         sync.extract()
 
-        with open(yaml_path, 'r', encoding='utf-8') as f:
+        with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         # Check plurals extracted
@@ -1036,12 +1256,18 @@ class TestStringsdictWithFormatKey:
 
         # Each language should have its own _format_key
         assert "en" in plural_data
-        assert plural_data["en"]["_format_key"] == "Only %#@texts@ available for free. Unlimited access is only available with Premium."
+        assert (
+            plural_data["en"]["_format_key"]
+            == "Only %#@texts@ available for free. Unlimited access is only available with Premium."
+        )
         assert plural_data["en"]["one"] == "%d text"
         assert plural_data["en"]["other"] == "%d texts"
 
         assert "de" in plural_data
-        assert plural_data["de"]["_format_key"] == "Nur %#@texts@ kostenlos. Unbegrenzter Zugang nur mit Premium."
+        assert (
+            plural_data["de"]["_format_key"]
+            == "Nur %#@texts@ kostenlos. Unbegrenzter Zugang nur mit Premium."
+        )
         assert plural_data["de"]["one"] == "%d Text"
         assert plural_data["de"]["other"] == "%d Texte"
 
@@ -1064,7 +1290,7 @@ class TestStringsdictWithFormatKey:
                 },
             }
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
@@ -1072,24 +1298,39 @@ class TestStringsdictWithFormatKey:
         sync.apply_android(res_path=res_path, default_lang="en")
 
         # Check English - should use English format_key
-        en_content = (res_path / "values" / "strings.xml").read_text(encoding='utf-8')
+        en_content = (res_path / "values" / "strings.xml").read_text(encoding="utf-8")
         assert '<plurals name="trialLimitTextsCount">' in en_content
-        assert '<item quantity="one">Only %d text available for free. Unlimited access is only available with Premium.</item>' in en_content
-        assert '<item quantity="other">Only %d texts available for free. Unlimited access is only available with Premium.</item>' in en_content
+        assert (
+            '<item quantity="one">Only %d text available for free. Unlimited access is only available with Premium.</item>'
+            in en_content
+        )
+        assert (
+            '<item quantity="other">Only %d texts available for free. Unlimited access is only available with Premium.</item>'
+            in en_content
+        )
 
         # Check German - should use German format_key
-        de_content = (res_path / "values-de" / "strings.xml").read_text(encoding='utf-8')
+        de_content = (res_path / "values-de" / "strings.xml").read_text(
+            encoding="utf-8"
+        )
         assert '<plurals name="trialLimitTextsCount">' in de_content
-        assert '<item quantity="one">Nur %d Text kostenlos. Unbegrenzter Zugang nur mit Premium.</item>' in de_content
-        assert '<item quantity="other">Nur %d Texte kostenlos. Unbegrenzter Zugang nur mit Premium.</item>' in de_content
+        assert (
+            '<item quantity="one">Nur %d Text kostenlos. Unbegrenzter Zugang nur mit Premium.</item>'
+            in de_content
+        )
+        assert (
+            '<item quantity="other">Nur %d Texte kostenlos. Unbegrenzter Zugang nur mit Premium.</item>'
+            in de_content
+        )
 
     def test_extract_stringsdict_positional_plural(self, temp_dir):
         """Test extraction of stringsdict with positional plural variable like %2$#@var@."""
         resources = temp_dir / "Resources"
         en_dir = resources / "en.lproj"
         en_dir.mkdir(parents=True)
-        (en_dir / "Localizable.strings").write_text('"x" = "x";\n', encoding='utf-8')
-        (en_dir / "Localizable.stringsdict").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+        (en_dir / "Localizable.strings").write_text('"x" = "x";\n', encoding="utf-8")
+        (en_dir / "Localizable.stringsdict").write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -1110,13 +1351,15 @@ class TestStringsdictWithFormatKey:
         </dict>
     </dict>
 </dict>
-</plist>""", encoding='utf-8')
+</plist>""",
+            encoding="utf-8",
+        )
 
         yaml_path = temp_dir / "translations.yaml"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
         sync.extract()
 
-        with open(yaml_path, 'r', encoding='utf-8') as f:
+        with open(yaml_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         assert "Plurals" in data
@@ -1149,7 +1392,7 @@ class TestStringsdictWithFormatKey:
                 },
             },
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         resources = temp_dir / "Resources"
@@ -1157,9 +1400,10 @@ class TestStringsdictWithFormatKey:
         sync.apply()
 
         import plistlib
+
         en_stringsdict = resources / "en.lproj" / "Localizable.stringsdict"
         assert en_stringsdict.exists()
-        with open(en_stringsdict, 'rb') as f:
+        with open(en_stringsdict, "rb") as f:
             plist = plistlib.load(f)
 
         entry = plist["settings.combinations"]
@@ -1172,7 +1416,7 @@ class TestStringsdictWithFormatKey:
         assert plural_dict["other"] == "possible combinations"
 
         ru_stringsdict = resources / "ru.lproj" / "Localizable.stringsdict"
-        with open(ru_stringsdict, 'rb') as f:
+        with open(ru_stringsdict, "rb") as f:
             plist = plistlib.load(f)
 
         ru_plural = plist["settings.combinations"]["combinations"]
@@ -1203,7 +1447,7 @@ class TestStringsdictWithFormatKey:
                 },
             },
         }
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         resources = temp_dir / "Resources"
@@ -1211,11 +1455,16 @@ class TestStringsdictWithFormatKey:
         sync.apply()
 
         import plistlib
+
         for lang in ["en", "ru"]:
             stringsdict = resources / f"{lang}.lproj" / "Localizable.stringsdict"
-            with open(stringsdict, 'rb') as f:
+            with open(stringsdict, "rb") as f:
                 plist = plistlib.load(f)
-            assert plist["settings.combinations"]["NSStringLocalizedFormatKey"] == "%1$@ %2$#@combinations@"
+            assert (
+                plist["settings.combinations"]["NSStringLocalizedFormatKey"]
+                == "%1$@ %2$#@combinations@"
+            )
+
 
 class TestEmptyTranslationIsMissing:
     """An empty value is an untranslated string, not a translation.
@@ -1231,13 +1480,17 @@ class TestEmptyTranslationIsMissing:
         en = resources / "en.lproj"
         en.mkdir(parents=True)
         (en / "Localizable.strings").write_text(
-            '"hello" = "Hello";\n"bye" = "Bye";\n', encoding='utf-8')
+            '"hello" = "Hello";\n"bye" = "Bye";\n', encoding="utf-8"
+        )
         hr = resources / "hr.lproj"
         hr.mkdir(parents=True)
         (hr / "Localizable.strings").write_text(
-            '"hello" = "Bok";\n"bye" = "";\n', encoding='utf-8')
+            '"hello" = "Bok";\n"bye" = "";\n', encoding="utf-8"
+        )
 
-        sync = I18nSync(resources_path=resources, yaml_path=temp_dir / "translations.yaml")
+        sync = I18nSync(
+            resources_path=resources, yaml_path=temp_dir / "translations.yaml"
+        )
         sync.extract()
 
         out = capsys.readouterr().out
@@ -1249,12 +1502,16 @@ class TestEmptyTranslationIsMissing:
         resources = temp_dir / "Resources"
         en = resources / "en.lproj"
         en.mkdir(parents=True)
-        (en / "Localizable.strings").write_text('"hello" = "Hello";\n', encoding='utf-8')
+        (en / "Localizable.strings").write_text(
+            '"hello" = "Hello";\n', encoding="utf-8"
+        )
         hr = resources / "hr.lproj"
         hr.mkdir(parents=True)
-        (hr / "Localizable.strings").write_text('"hello" = "Bok";\n', encoding='utf-8')
+        (hr / "Localizable.strings").write_text('"hello" = "Bok";\n', encoding="utf-8")
 
-        sync = I18nSync(resources_path=resources, yaml_path=temp_dir / "translations.yaml")
+        sync = I18nSync(
+            resources_path=resources, yaml_path=temp_dir / "translations.yaml"
+        )
         sync.extract()
 
         assert "All keys present in all languages" in capsys.readouterr().out
@@ -1268,7 +1525,7 @@ class TestEmptyTranslationIsMissing:
         section.add_key("bye", "en", "Bye")
         section.add_key("bye", "hr", "")  # present in the YAML, but empty
 
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
 
         resources = temp_dir / "Resources"
@@ -1286,7 +1543,7 @@ class TestEmptyTranslationIsMissing:
         section.add_key("hello", "en", "Hello")
         section.add_key("hello", "hr", "Bok")
 
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
 
         resources = temp_dir / "Resources"
@@ -1299,12 +1556,16 @@ class TestEmptyTranslationIsMissing:
         resources = temp_dir / "Resources"
         en = resources / "en.lproj"
         en.mkdir(parents=True)
-        (en / "Localizable.strings").write_text('"hello" = "Hello";\n', encoding='utf-8')
+        (en / "Localizable.strings").write_text(
+            '"hello" = "Hello";\n', encoding="utf-8"
+        )
         hr = resources / "hr.lproj"
         hr.mkdir(parents=True)
-        (hr / "Localizable.strings").write_text('"hello" = "   ";\n', encoding='utf-8')
+        (hr / "Localizable.strings").write_text('"hello" = "   ";\n', encoding="utf-8")
 
-        sync = I18nSync(resources_path=resources, yaml_path=temp_dir / "translations.yaml")
+        sync = I18nSync(
+            resources_path=resources, yaml_path=temp_dir / "translations.yaml"
+        )
         sync.extract()
 
         assert "All keys present in all languages" not in capsys.readouterr().out
@@ -1316,14 +1577,16 @@ class TestEmptyTranslationIsMissing:
         section.add_key("hello", "en", "Hello")
         section.add_key("hello", "hr", "Bok")
 
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
 
         resources = temp_dir / "Kaleidophone" / "Resources"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
         sync.apply()
 
-        header = (resources / "hr.lproj" / "Localizable.strings").read_text(encoding='utf-8')
+        header = (resources / "hr.lproj" / "Localizable.strings").read_text(
+            encoding="utf-8"
+        )
         assert "Kaleidophone" in header
 
     def test_project_name_comes_from_the_resources_folder_itself(self, temp_dir):
@@ -1332,12 +1595,14 @@ class TestEmptyTranslationIsMissing:
         section = trans_data.add_section("Localizable")
         section.add_key("hello", "en", "Hello")
 
-        with open(yaml_path, 'w', encoding='utf-8') as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(trans_data.to_yaml_dict(), f, allow_unicode=True, sort_keys=False)
 
         resources = temp_dir / "Kaleidophone"
         sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
         sync.apply()
 
-        header = (resources / "en.lproj" / "Localizable.strings").read_text(encoding='utf-8')
+        header = (resources / "en.lproj" / "Localizable.strings").read_text(
+            encoding="utf-8"
+        )
         assert "Kaleidophone" in header

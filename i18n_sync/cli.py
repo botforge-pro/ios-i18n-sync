@@ -2,7 +2,6 @@
 
 import click
 import sys
-from pathlib import Path
 from .sync import I18nSync
 
 
@@ -13,16 +12,30 @@ def cli():
 
 
 @cli.command()
-@click.option('--resources', '-r', default='Resources',
-              help='Path to Resources directory (default: Resources)')
-@click.option('--output', '-o', default='translations.yaml',
-              help='Output YAML file (default: translations.yaml)')
-@click.option('--source-lang', '-s', default='en',
-              help='Source language that defines the canonical key list (default: en)')
+@click.option(
+    "--resources",
+    "-r",
+    default="Resources",
+    help="Path to Resources directory (default: Resources)",
+)
+@click.option(
+    "--output",
+    "-o",
+    default="translations.yaml",
+    help="Output YAML file (default: translations.yaml)",
+)
+@click.option(
+    "--source-lang",
+    "-s",
+    default="en",
+    help="Source language that defines the canonical key list (default: en)",
+)
 def extract(resources, output, source_lang):
     """Extract all .strings files to translations.yaml."""
     try:
-        sync = I18nSync(resources_path=resources, yaml_path=output, source_lang=source_lang)
+        sync = I18nSync(
+            resources_path=resources, yaml_path=output, source_lang=source_lang
+        )
         sync.extract()
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)
@@ -33,10 +46,18 @@ def extract(resources, output, source_lang):
 
 
 @cli.command()
-@click.option('--input', '-i', default='translations.yaml',
-              help='Input YAML file (default: translations.yaml)')
-@click.option('--resources', '-r', default='Resources',
-              help='Path to Resources directory (default: Resources)')
+@click.option(
+    "--input",
+    "-i",
+    default="translations.yaml",
+    help="Input YAML file (default: translations.yaml)",
+)
+@click.option(
+    "--resources",
+    "-r",
+    default="Resources",
+    help="Path to Resources directory (default: Resources)",
+)
 def apply(input, resources):
     """Apply translations.yaml back to .strings files."""
     try:
@@ -50,13 +71,25 @@ def apply(input, resources):
         sys.exit(1)
 
 
-@cli.command('apply-android')
-@click.option('--input', '-i', default='translations.yaml',
-              help='Input YAML file (default: translations.yaml)')
-@click.option('--res', '-r', default='app/src/main/res',
-              help='Path to Android res directory (default: app/src/main/res)')
-@click.option('--default-lang', '-d', default='en',
-              help='Default language for values/ folder (default: en)')
+@cli.command("apply-android")
+@click.option(
+    "--input",
+    "-i",
+    default="translations.yaml",
+    help="Input YAML file (default: translations.yaml)",
+)
+@click.option(
+    "--res",
+    "-r",
+    default="app/src/main/res",
+    help="Path to Android res directory (default: app/src/main/res)",
+)
+@click.option(
+    "--default-lang",
+    "-d",
+    default="en",
+    help="Default language for values/ folder (default: en)",
+)
 def apply_android(input, res, default_lang):
     """Apply translations.yaml to Android strings.xml files."""
     try:
@@ -75,5 +108,5 @@ def main():
     cli()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

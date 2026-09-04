@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 class TranslationKey(BaseModel):
     """A single translation key with all its language values."""
+
     translations: Dict[str, str] = Field(default_factory=dict)
 
     def add_translation(self, lang: str, value: str):
@@ -17,6 +18,7 @@ class TranslationKey(BaseModel):
 
 class StringsSection(BaseModel):
     """A section of strings (e.g., Localizable or InfoPlist)."""
+
     name: str
     keys: Dict[str, TranslationKey] = Field(default_factory=dict)
 
@@ -35,6 +37,7 @@ class StringsSection(BaseModel):
 
 class TranslationsData(BaseModel):
     """The complete translations data structure."""
+
     sections: Dict[str, StringsSection] = Field(default_factory=dict)
 
     def add_section(self, name: str) -> StringsSection:
@@ -57,10 +60,10 @@ class TranslationsData(BaseModel):
             for key, trans_key in section.keys.items():
                 # Sort languages with 'en' first if it exists
                 sorted_langs = {}
-                if 'en' in trans_key.translations:
-                    sorted_langs['en'] = trans_key.translations['en']
+                if "en" in trans_key.translations:
+                    sorted_langs["en"] = trans_key.translations["en"]
                 for lang in sorted(trans_key.translations.keys()):
-                    if lang != 'en':
+                    if lang != "en":
                         sorted_langs[lang] = trans_key.translations[lang]
                 result[section_name][key] = sorted_langs
         return result
