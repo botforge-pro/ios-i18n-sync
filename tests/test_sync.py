@@ -1,10 +1,12 @@
 """Tests for I18nSync class."""
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
+
+import pytest
 import yaml
+
 from i18n_sync import I18nSync
 from i18n_sync.models import TranslationsData
 
@@ -581,6 +583,7 @@ class TestApplyAndroid:
                     "en": "Hello",
                     "zh-Hans": "你好",
                     "zh-Hant": "您好",
+                    "zh-Hant-TW": "你好",
                     "zh-HK": "你好",
                     "pt-BR": "Olá",
                     "pt-PT": "Olá",
@@ -602,6 +605,7 @@ class TestApplyAndroid:
         assert (res_path / "values" / "strings.xml").exists()  # en -> values/
         assert (res_path / "values-zh-rCN" / "strings.xml").exists()  # zh-Hans
         assert (res_path / "values-zh-rTW" / "strings.xml").exists()  # zh-Hant
+        assert (res_path / "values-b+zh+Hant+TW" / "strings.xml").exists()
         assert (res_path / "values-zh-rHK" / "strings.xml").exists()  # zh-HK
         assert (res_path / "values-pt-rBR" / "strings.xml").exists()  # pt-BR
         assert (res_path / "values-pt-rPT" / "strings.xml").exists()  # pt-PT

@@ -2,12 +2,11 @@
 
 import plistlib
 import re
-import yaml
 from pathlib import Path
-from typing import Optional, Set
+
+import yaml
 
 from .models import TranslationsData
-
 
 # iOS to Android language code mapping
 # Full list for all App Store supported locales
@@ -16,6 +15,7 @@ IOS_TO_ANDROID_LANG = {
     # Chinese variants (use region format for locales_config.xml compatibility)
     "zh-Hans": "zh-rCN",  # Chinese Simplified
     "zh-Hant": "zh-rTW",  # Chinese Traditional
+    "zh-Hant-TW": "b+zh+Hant+TW",  # Chinese Traditional (Taiwan)
     "zh-HK": "zh-rHK",  # Chinese Hong Kong
     # Portuguese variants
     "pt-BR": "pt-rBR",  # Portuguese Brazil
@@ -128,7 +128,7 @@ class I18nSync:
 
         # Also include languages that only appear in plurals
         for lang_data in self.plurals.values():
-            languages.update(k for k in lang_data.keys() if k != "_format_key")
+            languages.update(k for k in lang_data if k != "_format_key")
 
         missing = 0
         for section_name in self.strings_files:
@@ -144,7 +144,7 @@ class I18nSync:
             # The count is what a human actually reads.
             print(f"{missing} missing translation(s) written as empty strings")
 
-    def _apply_section(self, section_name: str, languages: Set[str]) -> int:
+    def _apply_section(self, section_name: str, languages: set[str]) -> int:
         section = self.translations.sections.get(section_name)
         if not section:
             return 0
@@ -158,7 +158,7 @@ class I18nSync:
         strings_file = lproj_dir / f"{section.name}.strings"
         return self._write_strings_file(strings_file, lang, section)
 
-    def _apply_stringsdict(self, languages: Set[str]) -> None:
+    def _apply_stringsdict(self, languages: set[str]) -> None:
         """Write plurals from YAML to .stringsdict files for each language."""
         for lang in languages:
             # Collect all plural keys that have this language
@@ -319,7 +319,7 @@ class I18nSync:
 
     def _get_file_header(
         self, file_path: Path, lang: str, file_type: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract header comment from existing file or create default."""
         if file_path.exists():
             content = file_path.read_text(encoding="utf-8")
@@ -474,7 +474,7 @@ class I18nSync:
         for section_name, section in self.translations.sections.items():
             if section_name != "AppShortcuts":
                 languages.update(section.get_languages())
-        for plural_key, lang_data in self.plurals.items():
+        for lang_data in self.plurals.values():
             languages.update(lang for lang in lang_data if lang != "_format_key")
 
         for lang in languages:
@@ -611,7 +611,7 @@ class I18nSync:
             return "s"
         return ios_type
 
-    def _write_locales_config(self, res_path: Path, languages: Set[str]) -> None:
+    def _write_locales_config(self, res_path: Path, languages: set[str]) -> None:
         """Generate locales_config.xml for Android per-app language support."""
         xml_dir = res_path / "xml"
         xml_dir.mkdir(parents=True, exist_ok=True)

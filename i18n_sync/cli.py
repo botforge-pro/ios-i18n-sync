@@ -1,14 +1,16 @@
 """Command-line interface for i18n-sync."""
 
-import click
 import sys
+
+import click
+import yaml
+
 from .sync import I18nSync
 
 
 @click.group()
 def cli():
     """iOS i18n sync tool for managing .strings files through YAML."""
-    pass
 
 
 @cli.command()
@@ -40,7 +42,7 @@ def extract(resources, output, source_lang):
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
-    except Exception as e:
+    except (OSError, ValueError, yaml.YAMLError) as e:
         click.echo(f"Unexpected error: {e}", err=True)
         sys.exit(1)
 
@@ -66,7 +68,7 @@ def apply(input, resources):
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
-    except Exception as e:
+    except (OSError, ValueError, yaml.YAMLError) as e:
         click.echo(f"Unexpected error: {e}", err=True)
         sys.exit(1)
 
@@ -98,7 +100,7 @@ def apply_android(input, res, default_lang):
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
-    except Exception as e:
+    except (OSError, ValueError, yaml.YAMLError) as e:
         click.echo(f"Unexpected error: {e}", err=True)
         sys.exit(1)
 

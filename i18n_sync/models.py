@@ -1,18 +1,17 @@
 """Data models for i18n-sync."""
 
-from typing import Dict, Optional
 from pydantic import BaseModel, Field
 
 
 class TranslationKey(BaseModel):
     """A single translation key with all its language values."""
 
-    translations: Dict[str, str] = Field(default_factory=dict)
+    translations: dict[str, str] = Field(default_factory=dict)
 
     def add_translation(self, lang: str, value: str):
         self.translations[lang] = value
 
-    def get_translation(self, lang: str) -> Optional[str]:
+    def get_translation(self, lang: str) -> str | None:
         return self.translations.get(lang)
 
 
@@ -20,7 +19,7 @@ class StringsSection(BaseModel):
     """A section of strings (e.g., Localizable or InfoPlist)."""
 
     name: str
-    keys: Dict[str, TranslationKey] = Field(default_factory=dict)
+    keys: dict[str, TranslationKey] = Field(default_factory=dict)
 
     def add_key(self, key: str, lang: str, value: str):
         if key not in self.keys:
@@ -38,7 +37,7 @@ class StringsSection(BaseModel):
 class TranslationsData(BaseModel):
     """The complete translations data structure."""
 
-    sections: Dict[str, StringsSection] = Field(default_factory=dict)
+    sections: dict[str, StringsSection] = Field(default_factory=dict)
 
     def add_section(self, name: str) -> StringsSection:
         if name not in self.sections:
@@ -52,7 +51,7 @@ class TranslationsData(BaseModel):
             languages.update(section.get_languages())
         return languages
 
-    def to_yaml_dict(self) -> Dict:
+    def to_yaml_dict(self) -> dict:
         """Convert to a dict suitable for YAML serialization."""
         result = {}
         for section_name, section in self.sections.items():
@@ -69,7 +68,7 @@ class TranslationsData(BaseModel):
         return result
 
     @classmethod
-    def from_yaml_dict(cls, data: Dict) -> "TranslationsData":
+    def from_yaml_dict(cls, data: dict) -> "TranslationsData":
         """Create from a dict loaded from YAML."""
         trans_data = cls()
         for section_name, section_data in data.items():
