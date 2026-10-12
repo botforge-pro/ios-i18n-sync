@@ -213,6 +213,21 @@ class TestExtract:
         assert content.count('"Open \\"${applicationName}\\"" =') == 1
         assert content.count('"Generate ${applicationName}" =') == 1
 
+    def test_apply_leaves_a_file_without_a_header_without_one(self, temp_dir):
+        resources = temp_dir / "Resources"
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+        file_path = en_dir / "InfoPlist.strings"
+        original = '"CFBundleDisplayName" = "Aerobingo";\n'
+        file_path.write_text(original, encoding="utf-8")
+
+        yaml_path = temp_dir / "translations.yaml"
+        sync = I18nSync(resources_path=resources, yaml_path=yaml_path)
+        sync.extract()
+        sync.apply()
+
+        assert file_path.read_text(encoding="utf-8") == original
+
     def test_extract_no_resources(self, temp_dir):
         """Test extraction fails gracefully when no resources found."""
         yaml_path = temp_dir / "translations.yaml"

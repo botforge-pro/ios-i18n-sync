@@ -422,15 +422,12 @@ class I18nSync:
     def _get_file_header(
         self, file_path: Path, lang: str, file_type: str
     ) -> str | None:
-        """Extract header comment from existing file or create default."""
+        """Keep an existing file's header, or its lack of one; a new file gets the default."""
         if file_path.exists():
             content = file_path.read_text(encoding="utf-8")
-            # Extract everything before first "key" = "value" line
             match = re.search(r'^"(?:[^"\\]|\\.)*"\s*=', content, re.MULTILINE)
-            if match:
-                header = content[: match.start()].rstrip()
-                if header:
-                    return header
+            header = (content[: match.start()] if match else content).rstrip()
+            return header or None
 
         # Default header with better language names
         lang_names = {
