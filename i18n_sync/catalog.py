@@ -116,8 +116,7 @@ class Catalog:
         print(f"Updated {self.path}")
         return missing
 
-    @staticmethod
-    def _kind(localization: dict) -> str | None:
+    def _kind(self, localization: dict) -> str | None:
         """'string' or 'plural' when the YAML can hold it, otherwise None."""
         variations = localization.get("variations", {})
         substitutions = localization.get("substitutions", {})
@@ -135,15 +134,13 @@ class Catalog:
                 return "plural"
         return None
 
-    @staticmethod
-    def _unit(value: str) -> dict:
+    def _unit(self, value: str) -> dict:
         return {"stringUnit": {"state": "translated", "value": value}}
 
-    @staticmethod
-    def _variations(forms: dict) -> dict:
+    def _variations(self, forms: dict) -> dict:
         return {
             "plural": {
-                quantity: Catalog._unit(forms[quantity])
+                quantity: self._unit(forms[quantity])
                 for quantity in QUANTITIES
                 if quantity in forms
             }
@@ -180,13 +177,11 @@ class Catalog:
             "substitutions": {match.group(2): substitution},
         }
 
-    @staticmethod
-    def _name_the_count(value: str) -> str:
+    def _name_the_count(self, value: str) -> str:
         """Write the plural's own number as %arg; any other number stays as it is."""
         return _replace_first(INTEGER_SPECIFIER, value, "%arg")
 
-    @staticmethod
-    def _plural_forms(localization: dict) -> dict:
+    def _plural_forms(self, localization: dict) -> dict:
         plural = localization.get("variations", {}).get("plural")
         if plural is not None:
             return {

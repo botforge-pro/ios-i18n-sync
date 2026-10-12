@@ -368,8 +368,7 @@ class I18nSync:
                 plural_forms["_format_key"] = format_key
             self.plurals.setdefault(key, {})[lang] = plural_forms
 
-    @staticmethod
-    def _single_plural(entry) -> dict | None:
+    def _single_plural(self, entry) -> dict | None:
         """The forms of an entry that substitutes exactly one plural, else None.
 
         Anything else — no substitution, several, one of another rule type, or a
