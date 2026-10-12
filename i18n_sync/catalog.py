@@ -223,6 +223,17 @@ def widen_integer_specifiers(value: str) -> str:
     return INTEGER_SPECIFIER.sub(widen, value)
 
 
+def plural_variable(format_key: str) -> str | None:
+    """The name in the first %#@name@ or %N$#@name@ that is not escaped as %%#@."""
+    match = _first(PLURAL_VARIABLE, format_key)
+    return match.group(2) if match else None
+
+
+def fill_plural_variable(format_key: str, form: str) -> str:
+    """Put a plural form where the format key's own %#@name@ stands."""
+    return _replace_first(PLURAL_VARIABLE, format_key, form)
+
+
 def _specifiers(pattern: re.Pattern, value: str) -> list[str]:
     return [m.group(0) for m in pattern.finditer(value) if m.group(0) != "%%"]
 

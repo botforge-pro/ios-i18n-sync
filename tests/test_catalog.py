@@ -82,6 +82,23 @@ def test_convert_moves_localizable_strings_and_plurals_into_one_catalog(resource
     assert (resources / "en.lproj" / "InfoPlist.strings").exists()
 
 
+def test_convert_keeps_a_plural_whose_format_key_has_an_escaped_placeholder(tmp_path):
+    lproj = tmp_path / "Resources" / "en.lproj"
+    lproj.mkdir(parents=True)
+    (lproj / "Localizable.stringsdict").write_text(
+        STRINGSDICT.format(one="%d file", other="%d files").replace(
+            "<string>%#@count@</string>", "<string>%%#@literal@ %#@count@</string>"
+        ),
+        encoding="utf-8",
+    )
+
+    I18nSync(resources_path=lproj.parent).convert_to_catalog()
+
+    localization = catalog(lproj.parent)["strings"]["words"]["localizations"]["en"]
+    assert localization["stringUnit"]["value"] == "%%#@literal@ %#@count@"
+    assert list(localization["substitutions"]) == ["count"]
+
+
 def test_a_missing_translation_is_left_out_so_the_source_shows(resources):
     I18nSync(resources_path=resources).convert_to_catalog()
 

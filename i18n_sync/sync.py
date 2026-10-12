@@ -6,7 +6,12 @@ from pathlib import Path
 
 import yaml
 
-from .catalog import Catalog, widen_integer_specifiers
+from .catalog import (
+    Catalog,
+    fill_plural_variable,
+    plural_variable,
+    widen_integer_specifiers,
+)
 from .models import TranslationsData
 
 CATALOG_SECTION = "Localizable"
@@ -295,8 +300,7 @@ class I18nSync:
 
             # Determine variable name and format key
             if format_key_value:
-                match = re.search(r"%(?:\d+\$)?#@(\w+)@", format_key_value)
-                var_name = match.group(1) if match else "count"
+                var_name = plural_variable(format_key_value) or "count"
             else:
                 var_name = "count"
                 format_key_value = f"%#@{var_name}@"
@@ -346,12 +350,9 @@ class I18nSync:
 
             # Find the plural variable (e.g., "hours" in %#@hours@ or %2$#@hours@)
             format_key = entry.get("NSStringLocalizedFormatKey", "")
-            # Extract variable name from %#@varname@ or %N$#@varname@
-            match = re.search(r"%(?:\d+\$)?#@(\w+)@", format_key)
-            if not match:
+            var_name = plural_variable(format_key)
+            if var_name is None:
                 continue
-
-            var_name = match.group(1)
             plural_dict = entry.get(var_name, {})
 
             if plural_dict.get("NSStringFormatSpecTypeKey") != "NSStringPluralRuleType":
@@ -636,8 +637,7 @@ class I18nSync:
                         plural_value = forms[quantity]
                         # If _format_key exists, substitute the plural form into it
                         if format_key:
-                            # Replace %#@varname@ with the plural value
-                            full_value = re.sub(r"%#@\w+@", plural_value, format_key)
+                            full_value = fill_plural_variable(format_key, plural_value)
                         else:
                             full_value = plural_value
                         escaped_value = self._escape_android_xml(full_value)

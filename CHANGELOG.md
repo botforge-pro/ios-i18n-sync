@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `convert-to-catalog` and `apply` took an escaped percent followed by a space and `d`, `i` or `u` for a format specifier, so `"%d%% de réduction"` became `"%lld%% llde réduction"`. A catalog converted by 0.13.0 is worth searching for `%% ll`.
 - A `%%` before a plural's `%#@count@` no longer shifts the substitution's argument number, and `%%#@name@` is no longer taken for the plural's placeholder.
+- Reading a `.stringsdict` took `%%#@name@` for the plural's placeholder, so `convert-to-catalog` dropped such a key and then deleted the file it came from; writing one and `apply-android` made the same mistake.
 - `extract` read a literal `%%arg` in a plural form as the number, so the next `apply` lost it.
 - `apply-android` numbered an escaped `%%d` as an argument: `"%lld files, %%d"` became `"%1$d files, %%2$d"`.
 
