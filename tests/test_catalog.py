@@ -99,6 +99,28 @@ def test_convert_keeps_a_plural_whose_format_key_has_an_escaped_placeholder(tmp_
     assert list(localization["substitutions"]) == ["count"]
 
 
+def test_convert_refuses_a_stringsdict_entry_it_cannot_read(tmp_path):
+    lproj = tmp_path / "Resources" / "ru.lproj"
+    lproj.mkdir(parents=True)
+    stringsdict = lproj / "Localizable.stringsdict"
+    stringsdict.write_text(
+        STRINGSDICT.format(one="%d слово", other="%d слов").replace(
+            "</dict>\n</plist>",
+            "    <key>nextReview</key>\n    <dict>\n"
+            "        <key>NSStringLocalizedFormatKey</key>\n"
+            "        <string>следующее через %@</string>\n    </dict>\n"
+            "</dict>\n</plist>",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="nextReview"):
+        I18nSync(resources_path=lproj.parent, source_lang="ru").convert_to_catalog()
+
+    assert stringsdict.exists()
+    assert not (lproj.parent / "Localizable.xcstrings").exists()
+
+
 def test_a_missing_translation_is_left_out_so_the_source_shows(resources):
     I18nSync(resources_path=resources).convert_to_catalog()
 

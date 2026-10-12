@@ -78,6 +78,7 @@ class I18nSync:
         self.strings_files = ["Localizable", "InfoPlist", "AppShortcuts"]
         self.translations = TranslationsData()
         self.plurals = {}  # {key: {lang: {quantity: value}}}
+        self.unread_stringsdict_entries = []
 
     @property
     def catalog_path(self) -> Path:
@@ -102,6 +103,13 @@ class I18nSync:
         if self.catalog_path.exists():
             raise FileExistsError(f"{self.catalog_path} already exists")
         self._read_resources()
+        if self.unread_stringsdict_entries:
+            raise ValueError(
+                "These .stringsdict entries are not a plural this tool reads, and "
+                "converting would lose them with the file: "
+                f"{', '.join(self.unread_stringsdict_entries)}. Move each into "
+                "Localizable.strings or rewrite it as a plural, then convert again."
+            )
         section = self.translations.sections.get(CATALOG_SECTION)
         strings = {
             key: {
@@ -152,6 +160,7 @@ class I18nSync:
     def _read_resources(self) -> None:
         self.translations = TranslationsData()
         self.plurals = {}
+        self.unread_stringsdict_entries = []
 
         self._refuse_strings_beside_the_catalog()
         if self.catalog_path.exists():
@@ -353,11 +362,9 @@ class I18nSync:
             # Find the plural variable (e.g., "hours" in %#@hours@ or %2$#@hours@)
             format_key = entry.get("NSStringLocalizedFormatKey", "")
             var_name = plural_variable(format_key)
-            if var_name is None:
-                continue
-            plural_dict = entry.get(var_name, {})
-
+            plural_dict = entry.get(var_name, {}) if var_name else {}
             if plural_dict.get("NSStringFormatSpecTypeKey") != "NSStringPluralRuleType":
+                self.unread_stringsdict_entries.append(f"{file_path}: {key}")
                 continue
 
             # Extract plural forms
@@ -529,6 +536,8 @@ class I18nSync:
         total_keys = 0
         languages = self.translations.get_all_languages()
 
+        for entry in self.unread_stringsdict_entries:
+            print(f"Warning: not a plural this tool reads, left out: {entry}")
         print("\nExtraction summary:")
         for section_name, section in self.translations.sections.items():
             key_count = len(section.keys)
