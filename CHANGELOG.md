@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-10-12
+
+### Added
+- `swiftgen/strings.stencil`: SwiftGen's `structured-swift5` strings template with `L10n` declared `nonisolated`, so a Swift 6 target with the main actor as default isolation can read its strings off the main actor.
+
 ## [0.11.0] - 2026-09-04
 
 ### Added

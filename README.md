@@ -114,6 +114,25 @@ Default paths:
 - Resources: `Resources/` directory
 - YAML file: `translations.yaml`
 
+### SwiftGen template for Swift 6
+
+`swiftgen/strings.stencil` is SwiftGen's `structured-swift5` strings template with the generated `L10n` enum, its lookup extension and its bundle token declared `nonisolated`. In a Swift 6 target whose default actor isolation is `MainActor`, the stock template makes every string main-actor isolated, so code off the main actor, such as an error's `errorDescription`, cannot read it. The strings are plain lookups in the bundle and safe from any thread.
+
+Point SwiftGen at it from a project that sits next to this repository:
+
+```yaml
+strings:
+  inputs:
+    - App/Resources/en.lproj
+  outputs:
+    - templatePath: ../ios-i18n-sync/swiftgen/strings.stencil
+      output: App/Generated/Strings.swift
+      params:
+        enumName: L10n
+```
+
+It takes the same parameters as `structured-swift5`. The original template is © SwiftGen, MIT licensed.
+
 ## YAML Format
 
 The YAML file is organized into sections corresponding to different .strings files:
