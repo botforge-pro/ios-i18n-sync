@@ -230,8 +230,18 @@ def plural_variable(format_key: str) -> str | None:
 
 
 def fill_plural_variable(format_key: str, form: str) -> str:
-    """Put a plural form where the format key's own %#@name@ stands."""
-    return _replace_first(PLURAL_VARIABLE, format_key, form)
+    """Put a plural form where the format key's own %#@name@ stands.
+
+    A numbered placeholder hands its number to the form's count, so
+    "%1$@ has %2$#@count@" with "%lld files" gives "%1$@ has %2$lld files".
+    """
+    match = _first(PLURAL_VARIABLE, format_key)
+    if match is None:
+        return format_key
+    count = _first(INTEGER_SPECIFIER, form)
+    if match.group(1) and count is not None and not count.group(1):
+        form = f"{form[: count.start()]}%{match.group(1)}${form[count.start() + 1 :]}"
+    return format_key[: match.start()] + form + format_key[match.end() :]
 
 
 def _specifiers(pattern: re.Pattern, value: str) -> list[str]:

@@ -860,6 +860,30 @@ class TestStringsdict:
         content = (res_path / "values" / "strings.xml").read_text(encoding="utf-8")
         assert '<item quantity="other">%%#@literal@ %d files</item>' in content
 
+    def test_apply_android_plural_keeps_a_numbered_placeholder_s_position(
+        self, temp_dir
+    ):
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_data = {
+            "Plurals": {
+                "owns": {
+                    "en": {
+                        "_format_key": "%1$@ has %2$#@count@",
+                        "one": "%lld file",
+                        "other": "%lld files",
+                    },
+                },
+            },
+        }
+        with open(yaml_path, "w", encoding="utf-8") as f:
+            yaml.dump(yaml_data, f, allow_unicode=True)
+
+        res_path = temp_dir / "res"
+        I18nSync(yaml_path=yaml_path).apply_android(res_path=res_path, default_lang="en")
+
+        content = (res_path / "values" / "strings.xml").read_text(encoding="utf-8")
+        assert '<item quantity="other">%1$s has %2$d files</item>' in content
+
     def test_apply_android_plurals(self, temp_dir):
         """Test generating Android plurals XML from YAML."""
         yaml_path = temp_dir / "translations.yaml"
