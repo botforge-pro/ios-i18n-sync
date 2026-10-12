@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-10-12
+
+### Added
+- String Catalog support. With `Localizable.xcstrings` in the resources folder, `extract` and `apply` work on it instead of the per-language `Localizable.strings` and `.stringsdict`. Comments and localizations the YAML cannot express (variations by device, several substitutions in one string) are kept as they are; a missing translation is left out so the source language shows.
+- `convert-to-catalog` moves a project's Localizable strings and plurals into the catalog, widening `%d`, `%i` and `%u` to their `ll` forms so Xcode's generated symbols take `Int`.
+
+### Fixed
+- `apply-android` turned `%ld` and `%lld` into specifiers Java's formatter rejects; they now become `%d`.
+
 ## [0.12.0] - 2026-10-12
 
 ### Added

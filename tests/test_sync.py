@@ -715,6 +715,10 @@ class TestApplyAndroid:
             # Float
             ("%.2f MB", "%.2f MB"),
             ("%d of %d (%.1f%%)", "%1$d of %2$d (%3$.1f%%)"),
+            # Long integers, which Java's formatter does not take
+            ("%lld items", "%d items"),
+            ("%ld of %lld", "%1$d of %2$d"),
+            ("%1$lld of %2$@", "%1$d of %2$s"),
         ],
     )
     def test_apply_android_format_specifiers(

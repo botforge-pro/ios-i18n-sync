@@ -36,6 +36,18 @@ i18n-sync extract --resources Resources
 i18n-sync apply --resources Resources
 ```
 
+### String Catalog
+
+When `Resources/Localizable.xcstrings` exists, `extract` and `apply` read and write the Localizable strings there instead of in each `*.lproj/Localizable.strings` and `.stringsdict`; InfoPlist and AppShortcuts strings stay in their `.strings` files. Xcode generates a symbol for every key (`Text(.speakWord)`, `String(localized: .errorSync)`), so no SwiftGen step is needed.
+
+Move a project over once:
+
+```bash
+i18n-sync convert-to-catalog --resources Resources
+```
+
+It writes every language and plural into the catalog, turns `%d` into `%lld` (Xcode's symbols then take `Int`, not `Int32`) and removes the old Localizable files. A plural inside a sentence becomes a substitution; one whose forms leave the number out goes through `%#@count@`, so its symbol is `name(count:)`. A localization the YAML cannot express, such as a variation by device, is left in the catalog untouched. `extract` and `apply` refuse to run while an old `Localizable.strings` sits beside the catalog.
+
 ### Android
 
 Generate Android `strings.xml` files from the same YAML:

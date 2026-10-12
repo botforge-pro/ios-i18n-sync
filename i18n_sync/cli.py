@@ -73,6 +73,31 @@ def apply(input, resources):
         sys.exit(1)
 
 
+@cli.command("convert-to-catalog")
+@click.option(
+    "--resources",
+    "-r",
+    default="Resources",
+    help="Path to Resources directory (default: Resources)",
+)
+@click.option(
+    "--source-lang",
+    "-s",
+    default="en",
+    help="Source language of the catalog (default: en)",
+)
+def convert_to_catalog(resources, source_lang):
+    """Move Localizable .strings and .stringsdict into Localizable.xcstrings."""
+    try:
+        I18nSync(resources_path=resources, source_lang=source_lang).convert_to_catalog()
+    except (FileNotFoundError, FileExistsError) as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    except (OSError, ValueError) as e:
+        click.echo(f"Unexpected error: {e}", err=True)
+        sys.exit(1)
+
+
 @cli.command("apply-android")
 @click.option(
     "--input",

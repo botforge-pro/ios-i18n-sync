@@ -6,7 +6,10 @@ from pathlib import Path
 
 import yaml
 
+from .catalog import Catalog, widen_integer_specifiers
 from .models import TranslationsData
+
+CATALOG_SECTION = "Localizable"
 
 # iOS to Android language code mapping
 # Full list for all App Store supported locales
@@ -69,17 +72,100 @@ class I18nSync:
         self.translations = TranslationsData()
         self.plurals = {}  # {key: {lang: {quantity: value}}}
 
+    @property
+    def catalog_path(self) -> Path:
+        return self.resources_path / f"{CATALOG_SECTION}.xcstrings"
+
     def extract(self) -> None:
-        """Extract all translations from .strings and .stringsdict files to YAML."""
+        """Extract all translations to YAML.
+
+        Localizable strings come from Localizable.xcstrings when the project has a
+        String Catalog, otherwise from the .strings and .stringsdict files.
+        """
+        self._read_resources()
+        self._save_yaml()
+        self._report_statistics()
+
+    def convert_to_catalog(self) -> None:
+        """Move Localizable.strings and .stringsdict of every language into one catalog.
+
+        %d becomes %lld, which Xcode's generated symbols take as Int.
+        InfoPlist and AppShortcuts strings stay where they are.
+        """
+        if self.catalog_path.exists():
+            raise FileExistsError(f"{self.catalog_path} already exists")
+        self._read_resources()
+        section = self.translations.sections.get(CATALOG_SECTION)
+        strings = {
+            key: {
+                lang: widen_integer_specifiers(value)
+                for lang, value in trans_key.translations.items()
+            }
+            for key, trans_key in (section.keys.items() if section else [])
+        }
+        plurals = {
+            key: {
+                lang: {
+                    name: widen_integer_specifiers(value)
+                    for name, value in forms.items()
+                }
+                for lang, forms in langs.items()
+            }
+            for key, langs in self.plurals.items()
+        }
+        catalog = Catalog(self.catalog_path)
+        catalog.data["sourceLanguage"] = self.source_lang
+        catalog.write(strings, plurals)
+        for lproj_dir in self._get_lproj_directories():
+            for suffix in (".strings", ".stringsdict"):
+                old = lproj_dir / f"{CATALOG_SECTION}{suffix}"
+                if old.exists():
+                    old.unlink()
+                    print(f"Removed {old}")
+            if not any(lproj_dir.iterdir()):
+                lproj_dir.rmdir()
+
+    def _refuse_strings_beside_the_catalog(self) -> None:
+        if not self.catalog_path.exists():
+            return
+        leftovers = [
+            path
+            for suffix in (".strings", ".stringsdict")
+            for path in sorted(
+                self.resources_path.glob(f"*.lproj/{CATALOG_SECTION}{suffix}")
+            )
+        ]
+        if leftovers:
+            raise ValueError(
+                f"{self.catalog_path} holds the {CATALOG_SECTION} strings, but these files "
+                f"still do too: {', '.join(str(path) for path in leftovers)}. "
+                "Xcode would build both; remove them or the catalog."
+            )
+
+    def _read_resources(self) -> None:
         self.translations = TranslationsData()
         self.plurals = {}
 
-        for lproj_dir in self._get_lproj_directories():
+        self._refuse_strings_beside_the_catalog()
+        if self.catalog_path.exists():
+            self._read_catalog()
+        for lproj_dir in self._lproj_directories_if_needed():
             self._process_language_directory(lproj_dir)
 
         self._drop_keys_missing_from_source_lang()
-        self._save_yaml()
-        self._report_statistics()
+
+    def _read_catalog(self) -> None:
+        strings, plurals = Catalog(self.catalog_path).read()
+        section = self.translations.add_section(CATALOG_SECTION)
+        for key, values in strings.items():
+            for lang, value in values.items():
+                section.add_key(key, lang, value)
+        self.plurals.update(plurals)
+
+    def _lproj_directories_if_needed(self):
+        if self.catalog_path.exists():
+            return list(self.resources_path.glob("*.lproj"))
+        return self._get_lproj_directories()
 
     def _get_lproj_directories(self):
         lproj_dirs = list(self.resources_path.glob("*.lproj"))
@@ -93,6 +179,8 @@ class I18nSync:
         lang = lproj_dir.stem
 
         for strings_file_name in self.strings_files:
+            if strings_file_name == CATALOG_SECTION and self.catalog_path.exists():
+                continue
             strings_file = lproj_dir / f"{strings_file_name}.strings"
             if strings_file.exists():
                 self._parse_strings_file(strings_file, lang, strings_file_name)
@@ -130,12 +218,17 @@ class I18nSync:
         for lang_data in self.plurals.values():
             languages.update(k for k in lang_data if k != "_format_key")
 
+        self._refuse_strings_beside_the_catalog()
         missing = 0
+        uses_catalog = self.catalog_path.exists()
         for section_name in self.strings_files:
-            missing += self._apply_section(section_name, languages)
+            if section_name == CATALOG_SECTION and uses_catalog:
+                missing += self._apply_catalog()
+            else:
+                missing += self._apply_section(section_name, languages)
 
         # Write .stringsdict files for plurals
-        if self.plurals:
+        if self.plurals and not uses_catalog:
             self._apply_stringsdict(languages)
 
         print(f"Applied translations to {len(languages)} languages")
@@ -143,6 +236,14 @@ class I18nSync:
             # A per-key warning scrolls past in a wall of "Updated ..." lines.
             # The count is what a human actually reads.
             print(f"{missing} missing translation(s) written as empty strings")
+
+    def _apply_catalog(self) -> int:
+        section = self.translations.sections.get(CATALOG_SECTION)
+        strings = {
+            key: dict(trans_key.translations)
+            for key, trans_key in (section.keys.items() if section else [])
+        }
+        return Catalog(self.catalog_path).write(strings, self.plurals)
 
     def _apply_section(self, section_name: str, languages: set[str]) -> int:
         section = self.translations.sections.get(section_name)
@@ -572,10 +673,11 @@ class I18nSync:
         """
         # First, convert already-positional iOS specifiers: %1$@ -> %1$s
         value = re.sub(r"(%\d+\$)@", r"\1s", value)
+        value = re.sub(r"(%\d+\$)l{1,2}([diu])", r"\1\2", value)
 
         # Pattern to match non-positional format specifiers (excluding %%)
         # Matches: %@, %d, %f, %.2f, %ld, etc. but not already positional like %1$d
-        pattern = r"%(?!\d+\$)(\.\d+)?(@|[dfiulxXoOeEgGsScCpPaAbBhHnN]|l[diu])"
+        pattern = r"%(?!\d+\$)(\.\d+)?(@|l{1,2}[diu]|[dfiuxXoOeEgGsScCpPaAbBhHnN])"
 
         # First, find all format specifiers
         matches = list(re.finditer(pattern, value))
@@ -609,7 +711,7 @@ class I18nSync:
         """Convert iOS type specifier to Android."""
         if ios_type == "@":
             return "s"
-        return ios_type
+        return ios_type.lstrip("l")
 
     def _write_locales_config(self, res_path: Path, languages: set[str]) -> None:
         """Generate locales_config.xml for Android per-app language support."""
