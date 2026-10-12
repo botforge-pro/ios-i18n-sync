@@ -15,6 +15,8 @@ from .catalog import (
 from .models import TranslationsData
 
 CATALOG_SECTION = "Localizable"
+# A .strings header is the comments it opens with, however its keys are laid out.
+LEADING_COMMENTS = re.compile(r"(?:\s*(?:/\*.*?\*/|//[^\n]*))*", re.DOTALL)
 
 # iOS to Android language code mapping
 # Full list for all App Store supported locales
@@ -424,9 +426,8 @@ class I18nSync:
     ) -> str | None:
         """Keep an existing file's header, or its lack of one; a new file gets the default."""
         if file_path.exists():
-            content = file_path.read_text(encoding="utf-8")
-            match = re.search(r'^"(?:[^"\\]|\\.)*"\s*=', content, re.MULTILINE)
-            header = (content[: match.start()] if match else content).rstrip()
+            content = file_path.read_text(encoding="utf-8").lstrip("﻿")
+            header = LEADING_COMMENTS.match(content).group(0).strip()
             return header or None
 
         # Default header with better language names

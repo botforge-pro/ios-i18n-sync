@@ -228,6 +228,56 @@ class TestExtract:
 
         assert file_path.read_text(encoding="utf-8") == original
 
+    @pytest.mark.parametrize(
+        ("existing", "header"),
+        [
+            ('"CFBundleDisplayName" = "Old";\n', None),
+            ('    "CFBundleDisplayName" = "Old";\n', None),
+            ('﻿"CFBundleDisplayName" = "Old";\n', None),
+            ("", None),
+            ("/* Only a header */\n", "/* Only a header */"),
+            (
+                '/* Kept */\n// too\n\n"CFBundleDisplayName" = "Old";\n',
+                "/* Kept */\n// too",
+            ),
+        ],
+    )
+    def test_apply_keeps_exactly_the_header_an_existing_file_had(
+        self, temp_dir, existing, header
+    ):
+        resources = temp_dir / "Resources"
+        en_dir = resources / "en.lproj"
+        en_dir.mkdir(parents=True)
+        file_path = en_dir / "InfoPlist.strings"
+        file_path.write_text(existing, encoding="utf-8")
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_path.write_text(
+            yaml.dump({"InfoPlist": {"CFBundleDisplayName": {"en": "New"}}}),
+            encoding="utf-8",
+        )
+
+        I18nSync(resources_path=resources, yaml_path=yaml_path).apply()
+
+        body = '"CFBundleDisplayName" = "New";\n'
+        expected = f"{header}\n{body}" if header else body
+        assert file_path.read_text(encoding="utf-8") == expected
+
+    def test_apply_gives_a_new_file_the_default_header(self, temp_dir):
+        resources = temp_dir / "Aerobingo" / "Resources"
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_path.write_text(
+            yaml.dump({"InfoPlist": {"CFBundleDisplayName": {"en": "New"}}}),
+            encoding="utf-8",
+        )
+
+        I18nSync(resources_path=resources, yaml_path=yaml_path).apply()
+
+        content = (resources / "en.lproj" / "InfoPlist.strings").read_text(
+            encoding="utf-8"
+        )
+        assert content.startswith("/*\n  InfoPlist.strings\n  Aerobingo\n")
+        assert content.endswith('*/\n"CFBundleDisplayName" = "New";\n')
+
     def test_extract_no_resources(self, temp_dir):
         """Test extraction fails gracefully when no resources found."""
         yaml_path = temp_dir / "translations.yaml"
