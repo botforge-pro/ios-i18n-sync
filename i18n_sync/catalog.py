@@ -5,9 +5,10 @@ import re
 from pathlib import Path
 
 QUANTITIES = ["zero", "one", "two", "few", "many", "other"]
-PLURAL_VARIABLE = re.compile(r"%(?:(\d+)\$)?#@(\w+)@")
-# Both patterns match an escaped "%%" first, so "%% de" is a percent sign and the
+# Each pattern matches an escaped "%%" first, so "%% de" is a percent sign and the
 # words after it, not a "% d" specifier; callers skip those matches.
+PLURAL_VARIABLE = re.compile(r"%%|%(?:(\d+)\$)?#@(\w+)@")
+COUNT_ARGUMENT = re.compile(r"%%|%arg")
 FORMAT_SPECIFIER = re.compile(
     r"%%|%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?(?:ll|l|hh|h|q|z|t|j)?[@dDiuUxXoOfFeEgGcCsSpaA]"
 )
@@ -157,7 +158,7 @@ class Catalog:
             if all(_specifiers(INTEGER_SPECIFIER, value) for value in forms.values()):
                 return {"variations": self._variations(forms)}
             format_key = BARE_PLURAL
-        match = PLURAL_VARIABLE.search(format_key)
+        match = _first(PLURAL_VARIABLE, format_key)
         if match is None:
             raise ValueError(f"No %#@name@ placeholder in plural format {format_key!r}")
         argument = (
@@ -182,16 +183,7 @@ class Catalog:
     @staticmethod
     def _name_the_count(value: str) -> str:
         """Write the plural's own number as %arg; any other number stays as it is."""
-        named = False
-
-        def name(match: re.Match) -> str:
-            nonlocal named
-            if match.group(0) == "%%" or named:
-                return match.group(0)
-            named = True
-            return "%arg"
-
-        return INTEGER_SPECIFIER.sub(name, value)
+        return _replace_first(INTEGER_SPECIFIER, value, "%arg")
 
     @staticmethod
     def _plural_forms(localization: dict) -> dict:
@@ -205,7 +197,9 @@ class Catalog:
         (substitution,) = localization["substitutions"].values()
         plural = substitution["variations"]["plural"]
         forms = {
-            quantity: plural[quantity]["stringUnit"]["value"].replace("%arg", "%lld", 1)
+            quantity: _replace_first(
+                COUNT_ARGUMENT, plural[quantity]["stringUnit"]["value"], "%lld"
+            )
             for quantity in QUANTITIES
             if quantity in plural
         }
@@ -231,3 +225,14 @@ def widen_integer_specifiers(value: str) -> str:
 
 def _specifiers(pattern: re.Pattern, value: str) -> list[str]:
     return [m.group(0) for m in pattern.finditer(value) if m.group(0) != "%%"]
+
+
+def _first(pattern: re.Pattern, value: str) -> re.Match | None:
+    return next((m for m in pattern.finditer(value) if m.group(0) != "%%"), None)
+
+
+def _replace_first(pattern: re.Pattern, value: str, replacement: str) -> str:
+    match = _first(pattern, value)
+    if match is None:
+        return value
+    return value[: match.start()] + replacement + value[match.end() :]

@@ -312,6 +312,28 @@ def test_an_escaped_percent_is_neither_an_argument_nor_the_count(catalog_only):
     assert other == "%% d %arg files"
 
 
+def test_an_escaped_percent_survives_apply_and_extract(catalog_only):
+    yaml_path = catalog_only.parent / "translations.yaml"
+    write_catalog(catalog_only, {})
+    forms = {
+        "_format_key": "%%#@literal@ %#@count@",
+        "one": "%%arg %lld file",
+        "other": "%%arg %lld files",
+    }
+    yaml_path.write_text(
+        yaml.dump({"Plurals": {"off": {"en": forms}}}), encoding="utf-8"
+    )
+
+    sync = I18nSync(resources_path=catalog_only, yaml_path=yaml_path)
+    sync.apply()
+    localization = catalog(catalog_only)["strings"]["off"]["localizations"]["en"]
+    assert list(localization["substitutions"]) == ["count"]
+    sync.extract()
+
+    extracted = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    assert extracted["Plurals"]["off"]["en"] == forms
+
+
 def test_old_strings_beside_the_catalog_are_refused(resources):
     I18nSync(resources_path=resources).convert_to_catalog()
     (resources / "en.lproj" / "Localizable.strings").write_text(

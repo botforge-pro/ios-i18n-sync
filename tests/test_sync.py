@@ -719,6 +719,10 @@ class TestApplyAndroid:
             ("%lld items", "%d items"),
             ("%ld of %lld", "%1$d of %2$d"),
             ("%1$lld of %2$@", "%1$d of %2$s"),
+            # An escaped percent is neither an argument nor counted as one
+            ("%lld files, %%d literal", "%d files, %%d literal"),
+            ("%%lld", "%%lld"),
+            ("%d%% of %d", "%1$d%% of %2$d"),
         ],
     )
     def test_apply_android_format_specifiers(

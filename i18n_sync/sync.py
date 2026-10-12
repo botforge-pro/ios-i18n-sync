@@ -671,41 +671,30 @@ class I18nSync:
         - Multiple specifiers get positional args: %d %d -> %1$d %2$d
         - Already positional specifiers: %1$@ -> %1$s (convert type only)
         """
-        # First, convert already-positional iOS specifiers: %1$@ -> %1$s
-        value = re.sub(r"(%\d+\$)@", r"\1s", value)
-        value = re.sub(r"(%\d+\$)l{1,2}([diu])", r"\1\2", value)
+        # An escaped "%%" is matched first and kept, so "%%d" stays a percent sign
+        # and a letter rather than becoming an argument.
+        pattern = re.compile(
+            r"%%|%(\d+\$)?(\.\d+)?(@|l{0,2}[diu]|[fxXoOeEgGsScCpPaAbBhHnN])"
+        )
+        unnumbered = sum(
+            1 for m in pattern.finditer(value) if m.group(0) != "%%" and not m.group(1)
+        )
+        position = 0
 
-        # Pattern to match non-positional format specifiers (excluding %%)
-        # Matches: %@, %d, %f, %.2f, %ld, etc. but not already positional like %1$d
-        pattern = r"%(?!\d+\$)(\.\d+)?(@|l{1,2}[diu]|[dfiuxXoOeEgGsScCpPaAbBhHnN])"
+        def convert(match: re.Match) -> str:
+            nonlocal position
+            if match.group(0) == "%%":
+                return "%%"
+            precision = match.group(2) or ""
+            type_spec = self._ios_to_android_type(match.group(3))
+            if match.group(1):
+                return f"%{match.group(1)}{precision}{type_spec}"
+            if unnumbered == 1:
+                return f"%{precision}{type_spec}"
+            position += 1
+            return f"%{position}${precision}{type_spec}"
 
-        # First, find all format specifiers
-        matches = list(re.finditer(pattern, value))
-
-        if not matches:
-            return value
-
-        # If only one specifier, just convert %@ to %s without positional
-        if len(matches) == 1:
-            return re.sub(
-                pattern,
-                lambda m: f"%{m.group(1) or ''}{self._ios_to_android_type(m.group(2))}",
-                value,
-            )
-
-        # Multiple specifiers: add positional arguments
-        result = value
-        offset = 0
-        for i, match in enumerate(matches, 1):
-            start = match.start() + offset
-            end = match.end() + offset
-            precision = match.group(1) or ""
-            type_spec = self._ios_to_android_type(match.group(2))
-            replacement = f"%{i}${precision}{type_spec}"
-            result = result[:start] + replacement + result[end:]
-            offset += len(replacement) - (match.end() - match.start())
-
-        return result
+        return pattern.sub(convert, value)
 
     def _ios_to_android_type(self, ios_type: str) -> str:
         """Convert iOS type specifier to Android."""
