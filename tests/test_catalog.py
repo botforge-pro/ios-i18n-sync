@@ -282,6 +282,36 @@ def test_a_plural_after_another_argument_takes_its_position(catalog_only):
     assert other == "%arg of %lld files"
 
 
+def test_an_escaped_percent_is_neither_an_argument_nor_the_count(catalog_only):
+    yaml_path = catalog_only.parent / "translations.yaml"
+    write_catalog(catalog_only, {})
+    yaml_path.write_text(
+        yaml.dump(
+            {
+                "Plurals": {
+                    "off": {
+                        "en": {
+                            "_format_key": "100%% done, %#@count@",
+                            "one": "%% d %lld file",
+                            "other": "%% d %lld files",
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    I18nSync(resources_path=catalog_only, yaml_path=yaml_path).apply()
+
+    substitution = catalog(catalog_only)["strings"]["off"]["localizations"]["en"][
+        "substitutions"
+    ]["count"]
+    assert substitution["argNum"] == 1
+    other = substitution["variations"]["plural"]["other"]["stringUnit"]["value"]
+    assert other == "%% d %arg files"
+
+
 def test_old_strings_beside_the_catalog_are_refused(resources):
     I18nSync(resources_path=resources).convert_to_catalog()
     (resources / "en.lproj" / "Localizable.strings").write_text(
@@ -303,6 +333,10 @@ def test_old_strings_beside_the_catalog_are_refused(resources):
         ("%u", "%llu"),
         ("%1$d", "%1$lld"),
         ("%lld", "%lld"),
+        ("%d%% de réduction", "%lld%% de réduction"),
+        ("%% under", "%% under"),
+        ("100%%d", "100%%d"),
+        ("%%%d", "%%%lld"),
     ],
 )
 def test_integer_specifiers_widen_to_long_long(before, after):

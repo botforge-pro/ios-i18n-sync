@@ -6,10 +6,12 @@ from pathlib import Path
 
 QUANTITIES = ["zero", "one", "two", "few", "many", "other"]
 PLURAL_VARIABLE = re.compile(r"%(?:(\d+)\$)?#@(\w+)@")
+# Both patterns match an escaped "%%" first, so "%% de" is a percent sign and the
+# words after it, not a "% d" specifier; callers skip those matches.
 FORMAT_SPECIFIER = re.compile(
-    r"%(?!%)(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?(?:ll|l|hh|h|q|z|t|j)?[@dDiuUxXoOfFeEgGcCsSpaA]"
+    r"%%|%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?(?:ll|l|hh|h|q|z|t|j)?[@dDiuUxXoOfFeEgGcCsSpaA]"
 )
-INTEGER_SPECIFIER = re.compile(r"%(\d+\$)?([-+ 0#]*\d*)(?:ll|l)?([diu])")
+INTEGER_SPECIFIER = re.compile(r"%%|%(\d+\$)?([-+ 0#]*\d*)(?:ll|l)?([diu])")
 # Xcode refuses a plain plural whose forms leave the number out ("балл", "балла"), so
 # such a plural goes through a substitution that names the number once.
 BARE_PLURAL = "%#@count@"
@@ -152,7 +154,7 @@ class Catalog:
             "_format_key"
         )
         if not format_key:
-            if all(INTEGER_SPECIFIER.search(value) for value in forms.values()):
+            if all(_specifiers(INTEGER_SPECIFIER, value) for value in forms.values()):
                 return {"variations": self._variations(forms)}
             format_key = BARE_PLURAL
         match = PLURAL_VARIABLE.search(format_key)
@@ -160,7 +162,7 @@ class Catalog:
             raise ValueError(f"No %#@name@ placeholder in plural format {format_key!r}")
         argument = (
             int(match.group(1) or 0)
-            or len(FORMAT_SPECIFIER.findall(format_key[: match.start()])) + 1
+            or len(_specifiers(FORMAT_SPECIFIER, format_key[: match.start()])) + 1
         )
         substitution = {
             "argNum": argument,
@@ -180,7 +182,16 @@ class Catalog:
     @staticmethod
     def _name_the_count(value: str) -> str:
         """Write the plural's own number as %arg; any other number stays as it is."""
-        return INTEGER_SPECIFIER.sub("%arg", value, count=1)
+        named = False
+
+        def name(match: re.Match) -> str:
+            nonlocal named
+            if match.group(0) == "%%" or named:
+                return match.group(0)
+            named = True
+            return "%arg"
+
+        return INTEGER_SPECIFIER.sub(name, value)
 
     @staticmethod
     def _plural_forms(localization: dict) -> dict:
@@ -210,7 +221,13 @@ def widen_integer_specifiers(value: str) -> str:
     """
 
     def widen(match: re.Match) -> str:
+        if match.group(0) == "%%":
+            return "%%"
         conversion = "d" if match.group(3) == "i" else match.group(3)
         return f"%{match.group(1) or ''}{match.group(2)}ll{conversion}"
 
     return INTEGER_SPECIFIER.sub(widen, value)
+
+
+def _specifiers(pattern: re.Pattern, value: str) -> list[str]:
+    return [m.group(0) for m in pattern.finditer(value) if m.group(0) != "%%"]
