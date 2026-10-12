@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.13.3] - 2026-10-12
 
 ### Fixed
-- `convert-to-catalog` skipped a `.stringsdict` entry that is not a plural, such as a bare `NSStringLocalizedFormatKey`, and then deleted the file it lived in. It now refuses and names every such entry, leaving the files as they are; `extract` warns about them.
+- `convert-to-catalog` skipped a `.stringsdict` entry it could not carry and then deleted the file it lived in: a bare `NSStringLocalizedFormatKey`, a format with several substitutions (only the first was kept), a substitution of another rule type, a plural without forms, an entry that is not a dictionary. It now refuses and names every such entry, leaving the files as they are; `extract` warns about them.
 
 ## [0.13.2] - 2026-10-12
 

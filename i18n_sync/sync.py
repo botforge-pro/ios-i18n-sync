@@ -10,6 +10,7 @@ from .catalog import (
     Catalog,
     fill_plural_variable,
     plural_variable,
+    plural_variables,
     widen_integer_specifiers,
 )
 from .models import TranslationsData
@@ -356,34 +357,40 @@ class I18nSync:
 
         # Each key in plist is a plural key
         for key, entry in plist.items():
-            if not isinstance(entry, dict):
-                continue
-
-            # Find the plural variable (e.g., "hours" in %#@hours@ or %2$#@hours@)
-            format_key = entry.get("NSStringLocalizedFormatKey", "")
-            var_name = plural_variable(format_key)
-            plural_dict = entry.get(var_name, {}) if var_name else {}
-            if plural_dict.get("NSStringFormatSpecTypeKey") != "NSStringPluralRuleType":
+            plural_forms = self._single_plural(entry)
+            if plural_forms is None:
                 self.unread_stringsdict_entries.append(f"{file_path}: {key}")
                 continue
+            format_key = entry["NSStringLocalizedFormatKey"]
+            # Save _format_key inside plural_forms if it's more than just the placeholder
+            # e.g., "Only %#@texts@ available..." vs just "%#@texts@"
+            if format_key != f"%#@{plural_variable(format_key)}@":
+                plural_forms["_format_key"] = format_key
+            self.plurals.setdefault(key, {})[lang] = plural_forms
 
-            # Extract plural forms
-            plural_forms = {}
-            for quantity in ["zero", "one", "two", "few", "many", "other"]:
-                if quantity in plural_dict:
-                    plural_forms[quantity] = plural_dict[quantity]
+    @staticmethod
+    def _single_plural(entry) -> dict | None:
+        """The forms of an entry that substitutes exactly one plural, else None.
 
-            if plural_forms:
-                if key not in self.plurals:
-                    self.plurals[key] = {}
-
-                # Save _format_key inside plural_forms if it's more than just the placeholder
-                # e.g., "Only %#@texts@ available..." vs just "%#@texts@"
-                simple_placeholder = f"%#@{var_name}@"
-                if format_key != simple_placeholder:
-                    plural_forms["_format_key"] = format_key
-
-                self.plurals[key][lang] = plural_forms
+        Anything else — no substitution, several, one of another rule type, or a
+        plural without forms — is beyond what the YAML and the catalog carry.
+        """
+        if not isinstance(entry, dict):
+            return None
+        names = plural_variables(entry.get("NSStringLocalizedFormatKey", ""))
+        if len(names) != 1:
+            return None
+        rule = entry.get(names[0])
+        if not isinstance(rule, dict):
+            return None
+        if rule.get("NSStringFormatSpecTypeKey") != "NSStringPluralRuleType":
+            return None
+        forms = {
+            quantity: rule[quantity]
+            for quantity in ["zero", "one", "two", "few", "many", "other"]
+            if quantity in rule
+        }
+        return forms or None
 
     def _unescape_strings_value(self, value: str) -> str:
         return value.replace('\\"', '"').replace("\\\\", "\\")

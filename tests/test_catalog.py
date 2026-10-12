@@ -1,6 +1,7 @@
 """Tests for String Catalog (.xcstrings) support."""
 
 import json
+import plistlib
 import shutil
 import tempfile
 from pathlib import Path
@@ -99,26 +100,56 @@ def test_convert_keeps_a_plural_whose_format_key_has_an_escaped_placeholder(tmp_
     assert list(localization["substitutions"]) == ["count"]
 
 
-def test_convert_refuses_a_stringsdict_entry_it_cannot_read(tmp_path):
-    lproj = tmp_path / "Resources" / "ru.lproj"
+def _plural_rule(**forms) -> dict:
+    return {
+        "NSStringFormatSpecTypeKey": "NSStringPluralRuleType",
+        "NSStringFormatValueTypeKey": "d",
+        **forms,
+    }
+
+
+def test_convert_refuses_every_stringsdict_entry_it_cannot_carry(tmp_path):
+    unreadable = {
+        "nextReview": {"NSStringLocalizedFormatKey": "следующее через %@"},
+        "fruit": {
+            "NSStringLocalizedFormatKey": "%#@apples@ и %#@oranges@",
+            "apples": _plural_rule(one="%d яблоко", other="%d яблок"),
+            "oranges": _plural_rule(one="%d апельсин", other="%d апельсинов"),
+        },
+        "mixed": {
+            "NSStringLocalizedFormatKey": "%#@count@ %#@width@",
+            "count": _plural_rule(one="%d слово", other="%d слов"),
+            "width": {"NSStringFormatSpecTypeKey": "NSStringVariableWidthRuleType"},
+        },
+        "noForms": {
+            "NSStringLocalizedFormatKey": "%#@count@",
+            "count": _plural_rule(),
+        },
+        "notADict": "просто строка",
+    }
+    readable = {
+        "words": {
+            "NSStringLocalizedFormatKey": "%#@count@",
+            "count": _plural_rule(one="%d слово", other="%d слов"),
+        }
+    }
+    resources = tmp_path / "Resources"
+    lproj = resources / "ru.lproj"
     lproj.mkdir(parents=True)
     stringsdict = lproj / "Localizable.stringsdict"
-    stringsdict.write_text(
-        STRINGSDICT.format(one="%d слово", other="%d слов").replace(
-            "</dict>\n</plist>",
-            "    <key>nextReview</key>\n    <dict>\n"
-            "        <key>NSStringLocalizedFormatKey</key>\n"
-            "        <string>следующее через %@</string>\n    </dict>\n"
-            "</dict>\n</plist>",
-        ),
-        encoding="utf-8",
-    )
+    stringsdict.write_bytes(plistlib.dumps({**readable, **unreadable}))
+    strings = lproj / "Localizable.strings"
+    strings.write_text('"cancel" = "Отмена";\n', encoding="utf-8")
+    before = {path: path.read_bytes() for path in (stringsdict, strings)}
 
-    with pytest.raises(ValueError, match="nextReview"):
-        I18nSync(resources_path=lproj.parent, source_lang="ru").convert_to_catalog()
+    with pytest.raises(ValueError) as refusal:
+        I18nSync(resources_path=resources, source_lang="ru").convert_to_catalog()
 
-    assert stringsdict.exists()
-    assert not (lproj.parent / "Localizable.xcstrings").exists()
+    named = str(refusal.value)
+    assert all(f": {key}" in named for key in unreadable)
+    assert ": words" not in named
+    assert {path: path.read_bytes() for path in before} == before
+    assert not (resources / "Localizable.xcstrings").exists()
 
 
 def test_a_missing_translation_is_left_out_so_the_source_shows(resources):

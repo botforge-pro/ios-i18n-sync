@@ -229,6 +229,13 @@ def plural_variable(format_key: str) -> str | None:
     return match.group(2) if match else None
 
 
+def plural_variables(format_key: str) -> list[str]:
+    """Every name a format key substitutes, escaped %%#@ left out."""
+    return [
+        m.group(2) for m in PLURAL_VARIABLE.finditer(format_key) if m.group(0) != "%%"
+    ]
+
+
 def fill_plural_variable(format_key: str, form: str) -> str:
     """Put a plural form where the format key's own %#@name@ stands.
 
