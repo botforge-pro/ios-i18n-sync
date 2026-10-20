@@ -920,7 +920,9 @@ class TestStringsdict:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
-        I18nSync(yaml_path=yaml_path).apply_android(res_path=res_path, default_lang="en")
+        I18nSync(yaml_path=yaml_path).apply_android(
+            res_path=res_path, default_lang="en"
+        )
 
         content = (res_path / "values" / "strings.xml").read_text(encoding="utf-8")
         assert '<item quantity="other">%%#@literal@ %d files</item>' in content
@@ -944,7 +946,9 @@ class TestStringsdict:
             yaml.dump(yaml_data, f, allow_unicode=True)
 
         res_path = temp_dir / "res"
-        I18nSync(yaml_path=yaml_path).apply_android(res_path=res_path, default_lang="en")
+        I18nSync(yaml_path=yaml_path).apply_android(
+            res_path=res_path, default_lang="en"
+        )
 
         content = (res_path / "values" / "strings.xml").read_text(encoding="utf-8")
         assert '<item quantity="other">%1$s has %2$d files</item>' in content
