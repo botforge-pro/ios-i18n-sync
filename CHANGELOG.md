@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-10-20
+
+### Added
+- `remove-language`, `rename-language` and `remove-key` edit `translations.yaml` across every key, section and plural. They refuse to remove or rename the source language, name a language or key that is not there, and stop a rename onto a language that already has translations.
+
+### Changed
+- `apply` removes the `.strings` and `.stringsdict` files it writes for a language the YAML no longer has, and the `.lproj` when nothing else is left in it. Before, they stayed: the language still shipped, and the next `extract` read it back. In a String Catalog such a language also loses the localizations the YAML cannot express; a language that only ever had those stays. `apply` names each language it removed, to be taken out of the Xcode project too.
+- `apply-android` removes `strings.xml` from a `values-<locale>` folder whose language the YAML no longer has, so a dropped language no longer stays in the app. Other qualifiers, such as `values-night`, `values-car` and `values-v21`, are left alone, and a YAML without a language removes nothing.
+
+### Fixed
+- `apply` with a YAML that has no Localizable strings, such as one holding only InfoPlist, emptied `Localizable.xcstrings`. It now leaves the catalog as it is and says so.
+
 ## [0.13.3] - 2026-10-12
 
 ### Fixed

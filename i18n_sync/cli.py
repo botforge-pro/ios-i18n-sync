@@ -130,6 +130,61 @@ def apply_android(input, res, default_lang):
         sys.exit(1)
 
 
+YAML_OPTION = click.option(
+    "--input",
+    "-i",
+    "yaml_path",
+    default="translations.yaml",
+    help="YAML file to edit (default: translations.yaml)",
+)
+SOURCE_OPTION = click.option(
+    "--source-lang",
+    "-s",
+    default="en",
+    help="Source language, which cannot be removed or renamed (default: en)",
+)
+
+
+def edit_yaml(change):
+    try:
+        change()
+    except (FileNotFoundError, ValueError) as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    except (OSError, yaml.YAMLError) as e:
+        click.echo(f"Unexpected error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command("remove-language")
+@YAML_OPTION
+@SOURCE_OPTION
+@click.argument("languages", nargs=-1, required=True)
+def remove_language(yaml_path, source_lang, languages):
+    """Drop languages from every key of the YAML; apply then removes their files."""
+    sync = I18nSync(yaml_path=yaml_path, source_lang=source_lang)
+    edit_yaml(lambda: sync.remove_languages(list(languages)))
+
+
+@cli.command("rename-language")
+@YAML_OPTION
+@SOURCE_OPTION
+@click.argument("old")
+@click.argument("new")
+def rename_language(yaml_path, source_lang, old, new):
+    """Move every translation from one language code to another, such as es-MX to es."""
+    sync = I18nSync(yaml_path=yaml_path, source_lang=source_lang)
+    edit_yaml(lambda: sync.rename_language(old, new))
+
+
+@cli.command("remove-key")
+@YAML_OPTION
+@click.argument("keys", nargs=-1, required=True)
+def remove_key(yaml_path, keys):
+    """Drop keys from every section and from the plurals of the YAML."""
+    edit_yaml(lambda: I18nSync(yaml_path=yaml_path).remove_keys(list(keys)))
+
+
 def main():
     """Main entry point."""
     cli()

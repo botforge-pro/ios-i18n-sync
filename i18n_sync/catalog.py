@@ -29,6 +29,7 @@ class Catalog:
 
     def __init__(self, path: Path):
         self.path = path
+        self.removed_languages: set[str] = set()
         self.data = {"sourceLanguage": "en", "strings": {}, "version": "1.0"}
         if path.exists():
             self.data = json.loads(path.read_text(encoding="utf-8"))
@@ -51,35 +52,50 @@ class Catalog:
                     )
         return strings, plurals
 
-    def write(self, strings: dict, plurals: dict) -> int:
+    def write(self, strings: dict, plurals: dict, kept_languages: set[str]) -> int:
         """Replace the localizations the YAML holds, keeping everything else.
 
         Per-key fields such as comments stay, and so does any localization the YAML
-        cannot express. A key the YAML no longer has is removed unless such a
-        localization keeps it. Every written value is marked `translated`: the YAML is
-        the source, so a `needs_review` or `new` state Xcode set is overwritten.
+        cannot express, unless its language had strings the YAML expresses and is in
+        none of `kept_languages`, the YAML's languages: that language was removed.
+        The source language is never removed. A key the YAML no longer has is
+        removed unless such a localization keeps it. Every written value is marked
+        `translated`: the YAML is the source, so a `needs_review` or `new` state
+        Xcode set is overwritten.
 
         Returns how many translations were missing; a missing one is left out, so the
         app falls back to the source language instead of showing an empty string.
         """
         old = self.data.get("strings", {})
-        kept = {
-            key: {
-                lang: localization
-                for lang, localization in entry.get("localizations", {}).items()
-                if self._kind(localization) is None
-            }
-            for key, entry in old.items()
-        }
-        kept = {
-            key: localizations for key, localizations in kept.items() if localizations
-        }
         languages = {lang for values in strings.values() for lang in values}
         languages |= {
             lang
             for values in plurals.values()
             for lang in values
             if lang != "_format_key"
+        }
+        removed = (
+            {
+                lang
+                for entry in old.values()
+                for lang, localization in entry.get("localizations", {}).items()
+                if self._kind(localization) is not None
+            }
+            - languages
+            - kept_languages
+            - {self.source_language}
+        )
+        self.removed_languages = removed
+        kept = {
+            key: {
+                lang: localization
+                for lang, localization in entry.get("localizations", {}).items()
+                if self._kind(localization) is None and lang not in removed
+            }
+            for key, entry in old.items()
+        }
+        kept = {
+            key: localizations for key, localizations in kept.items() if localizations
         }
         missing = 0
         entries = {}

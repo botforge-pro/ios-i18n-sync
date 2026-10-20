@@ -18,6 +18,13 @@ from .models import TranslationsData
 CATALOG_SECTION = "Localizable"
 # A .strings header is the comments it opens with, however its keys are laid out.
 LEADING_COMMENTS = re.compile(r"(?:\s*(?:/\*.*?\*/|//[^\n]*))*", re.DOTALL)
+# An Android resource qualifier naming a locale: ru, pt-rBR, b+zh+Hant+TW. Of the
+# other qualifiers only the UI mode `car` has that shape: the rest are longer or
+# carry digits (https://developer.android.com/guide/topics/resources/providing-resources#AlternativeResources).
+NOT_A_LOCALE = {"car"}
+LOCALE_QUALIFIER = re.compile(
+    r"[a-z]{2,3}(?:-r[A-Z]{2})?|b\+[a-z]{2,3}(?:\+[A-Za-z0-9]+)*"
+)
 
 # iOS to Android language code mapping
 # Full list for all App Store supported locales
@@ -131,7 +138,7 @@ class I18nSync:
         }
         catalog = Catalog(self.catalog_path)
         catalog.data["sourceLanguage"] = self.source_lang
-        catalog.write(strings, plurals)
+        catalog.write(strings, plurals, self._yaml_languages())
         for lproj_dir in self._get_lproj_directories():
             for suffix in (".strings", ".stringsdict"):
                 old = lproj_dir / f"{CATALOG_SECTION}{suffix}"
@@ -229,18 +236,17 @@ class I18nSync:
             raise FileNotFoundError(f"YAML file not found: {self.yaml_path}")
 
         self._load_yaml()
-        languages = self.translations.get_all_languages()
-
-        # Also include languages that only appear in plurals
-        for lang_data in self.plurals.values():
-            languages.update(k for k in lang_data if k != "_format_key")
+        languages = self._yaml_languages()
 
         self._refuse_strings_beside_the_catalog()
         missing = 0
+        removed = set()
         uses_catalog = self.catalog_path.exists()
         for section_name in self.strings_files:
             if section_name == CATALOG_SECTION and uses_catalog:
-                missing += self._apply_catalog()
+                catalog = Catalog(self.catalog_path)
+                missing += self._apply_catalog(catalog)
+                removed |= catalog.removed_languages
             else:
                 missing += self._apply_section(section_name, languages)
 
@@ -248,19 +254,120 @@ class I18nSync:
         if self.plurals and not uses_catalog:
             self._apply_stringsdict(languages)
 
+        if languages:
+            removed |= self._remove_languages_left_out(languages)
+        for lang in sorted(removed):
+            print(f"Remove {lang} from the localizations of the Xcode project too")
+
         print(f"Applied translations to {len(languages)} languages")
         if missing:
             # A per-key warning scrolls past in a wall of "Updated ..." lines.
             # The count is what a human actually reads.
             print(f"{missing} missing translation(s) written as empty strings")
 
-    def _apply_catalog(self) -> int:
+    def _yaml_languages(self) -> set[str]:
+        languages = self.translations.get_all_languages()
+        for lang_data in self.plurals.values():
+            languages.update(k for k in lang_data if k != "_format_key")
+        return languages
+
+    def _remove_languages_left_out(self, languages: set[str]) -> set[str]:
+        """Delete the files this tool writes for a language the YAML no longer has.
+
+        Left in place, they would still ship, and the next extract would read the
+        language back. Other files in the .lproj, such as storyboards, stay.
+        Returns the languages that lost a file.
+        """
+        removed = set()
+        for lproj_dir in self.resources_path.glob("*.lproj"):
+            if lproj_dir.stem in languages:
+                continue
+            for name in self.strings_files:
+                for suffix in (".strings", ".stringsdict"):
+                    written = lproj_dir / f"{name}{suffix}"
+                    if written.exists():
+                        written.unlink()
+                        removed.add(lproj_dir.stem)
+                        print(f"Removed {written}")
+            if not any(lproj_dir.iterdir()):
+                lproj_dir.rmdir()
+        return removed
+
+    # ==================== Editing the YAML ====================
+
+    def remove_languages(self, languages: list[str]) -> None:
+        """Drop languages from every key and plural of the YAML."""
+        self._load_existing_yaml()
+        if self.source_lang in languages:
+            raise ValueError(
+                f"{self.source_lang} is the source language and defines the keys"
+            )
+        self._require_languages(languages)
+        for translations in self._all_translations():
+            for lang in languages:
+                translations.pop(lang, None)
+        self._save_yaml()
+
+    def rename_language(self, old: str, new: str) -> None:
+        """Move every translation of one language code to another."""
+        self._load_existing_yaml()
+        if old == self.source_lang:
+            raise ValueError(f"{old} is the source language and defines the keys")
+        self._require_languages([old])
+        if new in self._yaml_languages():
+            raise ValueError(f"{new} already has translations")
+        for translations in self._all_translations():
+            if old in translations:
+                translations[new] = translations.pop(old)
+        self._save_yaml()
+
+    def remove_keys(self, keys: list[str]) -> None:
+        """Drop keys from every section and from the plurals."""
+        self._load_existing_yaml()
+        sections = [section.keys for section in self.translations.sections.values()]
+        unknown = [
+            key
+            for key in keys
+            if key not in self.plurals and not any(key in found for found in sections)
+        ]
+        if unknown:
+            raise ValueError(f"No such key: {', '.join(unknown)}")
+        for key in keys:
+            self.plurals.pop(key, None)
+            for found in sections:
+                found.pop(key, None)
+        self._save_yaml()
+
+    def _load_existing_yaml(self) -> None:
+        if not self.yaml_path.exists():
+            raise FileNotFoundError(f"YAML file not found: {self.yaml_path}")
+        self._load_yaml()
+
+    def _require_languages(self, languages: list[str]) -> None:
+        present = self._yaml_languages()
+        unknown = [lang for lang in languages if lang not in present]
+        if unknown:
+            raise ValueError(f"No translations in {', '.join(unknown)}")
+
+    def _all_translations(self):
+        for section in self.translations.sections.values():
+            for trans_key in section.keys.values():
+                yield trans_key.translations
+        yield from self.plurals.values()
+
+    def _apply_catalog(self, catalog: Catalog) -> int:
         section = self.translations.sections.get(CATALOG_SECTION)
         strings = {
             key: dict(trans_key.translations)
             for key, trans_key in (section.keys.items() if section else [])
         }
-        return Catalog(self.catalog_path).write(strings, self.plurals)
+        if not strings and not self.plurals:
+            print(
+                f"{self.yaml_path} has no {CATALOG_SECTION} strings: "
+                f"{self.catalog_path} is left as it is"
+            )
+            return 0
+        return catalog.write(strings, self.plurals, self._yaml_languages())
 
     def _apply_section(self, section_name: str, languages: set[str]) -> int:
         section = self.translations.sections.get(section_name)
@@ -594,6 +701,11 @@ class I18nSync:
 
         for lang in languages:
             self._write_android_strings(res_path, lang, default_lang)
+        if languages:
+            self._remove_android_languages_left_out(
+                res_path,
+                {self._android_folder(lang, default_lang) for lang in languages},
+            )
 
         # Generate locales_config.xml for per-app language support
         self._write_locales_config(res_path, languages)
@@ -604,18 +716,39 @@ class I18nSync:
         self, res_path: Path, lang: str, default_lang: str
     ) -> None:
         """Write strings.xml for a specific language."""
-        # Determine folder name
-        if lang == default_lang:
-            folder_name = "values"
-        else:
-            android_lang = IOS_TO_ANDROID_LANG.get(lang, lang)
-            folder_name = f"values-{android_lang}"
-
-        values_dir = res_path / folder_name
+        values_dir = res_path / self._android_folder(lang, default_lang)
         values_dir.mkdir(parents=True, exist_ok=True)
 
         strings_file = values_dir / "strings.xml"
         self._write_android_xml(strings_file, lang)
+
+    def _android_folder(self, lang: str, default_lang: str) -> str:
+        if lang == default_lang:
+            return "values"
+        return f"values-{IOS_TO_ANDROID_LANG.get(lang, lang)}"
+
+    def _remove_android_languages_left_out(
+        self, res_path: Path, written: set[str]
+    ) -> None:
+        """Delete strings.xml of a language the YAML no longer has.
+
+        Only a folder whose qualifier is a locale counts: values-night, values-car
+        or values-v21 keep their strings.xml.
+        """
+        for values_dir in res_path.glob("values-*"):
+            strings_file = values_dir / "strings.xml"
+            qualifier = values_dir.name.removeprefix("values-")
+            if (
+                values_dir.name in written
+                or qualifier in NOT_A_LOCALE
+                or not LOCALE_QUALIFIER.fullmatch(qualifier)
+            ):
+                continue
+            if strings_file.exists():
+                strings_file.unlink()
+                print(f"Removed {strings_file}")
+            if not any(values_dir.iterdir()):
+                values_dir.rmdir()
 
     def _write_android_xml(self, file_path: Path, lang: str) -> None:
         """Write Android strings.xml file."""

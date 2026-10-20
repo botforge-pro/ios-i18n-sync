@@ -126,6 +126,20 @@ Default paths:
 - Resources: `Resources/` directory
 - YAML file: `translations.yaml`
 
+### Removing or renaming a language or a key
+
+Translations are edited in the YAML by hand. Removing a language, renaming one or deleting a key touches every entry, so these have commands of their own, run between `extract` and `apply`:
+
+```bash
+i18n-sync remove-language tr ar        # from every key and plural
+i18n-sync rename-language es-MX es     # keeps the strings and plurals
+i18n-sync remove-key old_title         # from every section and the plurals
+```
+
+Each refuses rather than guesses: the source language cannot be removed or renamed, a language or key that is not there is named, and a rename onto a language that already has translations stops.
+
+`apply` then writes only the languages the YAML has. A language it no longer has loses the `.strings` and `.stringsdict` files this tool writes, and its `.lproj` goes when nothing else is left in it; a storyboard or other file of yours stays. With a String Catalog, `apply` drops it from the catalog, along with the localizations the YAML cannot express, such as a variation by device. `apply` names each language it removed: take it out of the localizations of the Xcode project as well. `apply-android` likewise removes `strings.xml` from a `values-<locale>` folder whose language the YAML no longer has; folders such as `values-night`, `values-car` or `values-v21` are not locales and are left alone. A YAML without a language removes nothing.
+
 ### SwiftGen template for Swift 6
 
 `swiftgen/strings.stencil` is SwiftGen's `structured-swift5` strings template with the generated `L10n` enum, its lookup extension and its bundle token declared `nonisolated`. In a Swift 6 target whose default actor isolation is `MainActor`, the stock template makes every string main-actor isolated, so code off the main actor, such as an error's `errorDescription`, cannot read it. The strings are plain lookups in the bundle and safe from any thread.
