@@ -8,14 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.14.0] - 2026-10-20
 
 ### Added
-- `remove-language`, `rename-language` and `remove-key` edit `translations.yaml` across every key, section and plural. They refuse to remove or rename the source language, name a language or key that is not there, and stop a rename onto a language that already has translations.
+- `remove-language tr ar`, `rename-language es-MX es` and `remove-key old_title` rewrite `translations.yaml` in place (`--input` picks another file), in every section and in the plurals. Run them between `extract` and `apply`. They never guess: removing or renaming the source language (`--source-lang`, `en` by default), a language or key the file does not have, and a rename onto a language some key already has all end with an error and exit code 1, leaving the file untouched.
 
 ### Changed
-- `apply` removes the `.strings` and `.stringsdict` files it writes for a language the YAML no longer has, and the `.lproj` when nothing else is left in it. Before, they stayed: the language still shipped, and the next `extract` read it back. In a String Catalog such a language also loses the localizations the YAML cannot express; a language that only ever had those stays. `apply` names each language it removed, to be taken out of the Xcode project too.
-- `apply-android` removes `strings.xml` from a `values-<locale>` folder whose language the YAML no longer has, so a dropped language no longer stays in the app. Other qualifiers, such as `values-night`, `values-car` and `values-v21`, are left alone, and a YAML without a language removes nothing.
+- `apply` now deletes files. For each `<lang>.lproj` whose language is in no key of the YAML, it deletes the `Localizable`, `InfoPlist` and `AppShortcuts` `.strings` and `.stringsdict` files, then the `.lproj` itself if it is left empty; a storyboard or any other file keeps it. Before, these files stayed: the language still shipped in the app, and the next `extract` put it back into the YAML.
+- With a String Catalog, `apply` takes such a language out of `Localizable.xcstrings` entirely, including its variations by device and strings with several substitutions, which the YAML cannot hold. A language the catalog has only in those forms was never in the YAML and is kept. The source language is never taken out.
+- `apply` prints `Remove <lang> from the localizations of the Xcode project too` for each language it took out. It does not edit the `.xcodeproj`; remove the language under Project → Info → Localizations by hand.
+- `apply-android` deletes `strings.xml` from each `values-<locale>` folder whose language is in no key of the YAML, then the folder if it is left empty. A folder counts as a locale only in the forms the tool writes, such as `values-ru`, `values-pt-rBR` and `values-b+zh+Hant+TW`; `values-night`, `values-car`, `values-v21` and combined qualifiers are left alone.
+- Neither command deletes anything when the YAML has no language at all. A language is matched by its exact code, so `es` in the YAML does not keep `es-MX`, and `Base` is a language like any other: `extract` puts it in the YAML, and it is kept while it is there. `locales_config.xml` is rewritten as before and lists only the languages the YAML has.
 
 ### Fixed
-- `apply` with a YAML that has no Localizable strings, such as one holding only InfoPlist, emptied `Localizable.xcstrings`. It now leaves the catalog as it is and says so.
+- `apply` with a YAML that has neither Localizable strings nor plurals, such as one holding only InfoPlist strings, emptied `Localizable.xcstrings`. It now leaves the catalog as it is and prints that it did.
+
+### Upgrading
+- Commit before the first `apply` or `apply-android` with 0.14.0 and read the diff: files of a language that is on disk but missing from the YAML, whether a leftover or one the YAML lost by mistake, are deleted on that run.
 
 ## [0.13.3] - 2026-10-12
 
