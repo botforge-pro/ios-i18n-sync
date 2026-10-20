@@ -1,6 +1,7 @@
 """Command-line interface for i18n-sync."""
 
 import sys
+from collections.abc import Callable
 
 import click
 import yaml
@@ -145,7 +146,7 @@ SOURCE_OPTION = click.option(
 )
 
 
-def edit_yaml(change):
+def edit_yaml(change: Callable[[], None]) -> None:
     try:
         change()
     except (FileNotFoundError, ValueError) as e:
@@ -160,7 +161,9 @@ def edit_yaml(change):
 @YAML_OPTION
 @SOURCE_OPTION
 @click.argument("languages", nargs=-1, required=True)
-def remove_language(yaml_path, source_lang, languages):
+def remove_language(
+    yaml_path: str, source_lang: str, languages: tuple[str, ...]
+) -> None:
     """Drop languages from every key of the YAML; apply then removes their files."""
     sync = I18nSync(yaml_path=yaml_path, source_lang=source_lang)
     edit_yaml(lambda: sync.remove_languages(list(languages)))
@@ -171,7 +174,7 @@ def remove_language(yaml_path, source_lang, languages):
 @SOURCE_OPTION
 @click.argument("old")
 @click.argument("new")
-def rename_language(yaml_path, source_lang, old, new):
+def rename_language(yaml_path: str, source_lang: str, old: str, new: str) -> None:
     """Move every translation from one language code to another, such as es-MX to es."""
     sync = I18nSync(yaml_path=yaml_path, source_lang=source_lang)
     edit_yaml(lambda: sync.rename_language(old, new))
@@ -180,7 +183,7 @@ def rename_language(yaml_path, source_lang, old, new):
 @cli.command("remove-key")
 @YAML_OPTION
 @click.argument("keys", nargs=-1, required=True)
-def remove_key(yaml_path, keys):
+def remove_key(yaml_path: str, keys: tuple[str, ...]) -> None:
     """Drop keys from every section and from the plurals of the YAML."""
     edit_yaml(lambda: I18nSync(yaml_path=yaml_path).remove_keys(list(keys)))
 

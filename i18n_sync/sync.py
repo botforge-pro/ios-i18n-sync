@@ -2,6 +2,7 @@
 
 import plistlib
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 import yaml
@@ -349,7 +350,7 @@ class I18nSync:
         if unknown:
             raise ValueError(f"No translations in {', '.join(unknown)}")
 
-    def _all_translations(self):
+    def _all_translations(self) -> Iterator[dict]:
         for section in self.translations.sections.values():
             for trans_key in section.keys.values():
                 yield trans_key.translations
