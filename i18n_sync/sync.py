@@ -56,9 +56,8 @@ IOS_TO_ANDROID_LANG = {
     # "nb" stays "nb" - no mapping needed
     # Hebrew (iOS may use 'he', Android uses 'iw')
     "he": "iw",
-    # Indonesian (iOS may use 'id', Android historically used 'in')
-    # Modern Android accepts 'id', but 'in' for compatibility
-    # "id": "in",  # Uncomment if targeting old Android versions
+    # Android resource lookup retains the legacy Indonesian language code.
+    "id": "in",
     # Yiddish
     "yi": "ji",
 }

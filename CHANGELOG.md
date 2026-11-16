@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-11-17
+
+### Fixed
+- `apply-android` writes Indonesian translations to `values-in` and declares `in` in `locales_config.xml`. Speak Shakespeare's Android emulator showed English for `[id,en_US]` with the old `values-id` resources; the regenerated benchmark APK shows Indonesian for both `id` and the system-selected `id-ID`, and Settings displays the language as Indonesia.
+- The existing stale-language cleanup removes the generated `values-id/strings.xml` on the next apply. It preserves other files: projects with hand-maintained Indonesian resources must migrate those separately. This mapping affects every consumer with an iOS `id` locale; it does not rename the iOS locale or Google Play's `id` listing.
+
 ## [0.14.0] - 2026-10-20
 
 ### Added

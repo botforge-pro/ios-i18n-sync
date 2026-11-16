@@ -679,6 +679,25 @@ class TestApplyAndroid:
         assert (res_path / "values-b+sr+Latn" / "strings.xml").exists()  # sr-Latn
         assert (res_path / "values-nb" / "strings.xml").exists()  # nb stays nb
 
+    def test_apply_android_indonesian_uses_legacy_resource_code(self, temp_dir):
+        yaml_path = temp_dir / "translations.yaml"
+        yaml_path.write_text(
+            yaml.dump({"Localizable": {"hello": {"en": "Hello", "id": "Halo"}}}),
+            encoding="utf-8",
+        )
+        res_path = temp_dir / "res"
+        stale = res_path / "values-id" / "strings.xml"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("<resources />", encoding="utf-8")
+
+        I18nSync(yaml_path=yaml_path).apply_android(res_path=res_path)
+
+        generated = res_path / "values-in" / "strings.xml"
+        assert '<string name="hello">Halo</string>' in generated.read_text()
+        assert not stale.exists()
+        locales = (res_path / "xml" / "locales_config.xml").read_text()
+        assert 'android:name="in"' in locales
+
     def test_apply_android_xml_escaping(self, temp_dir):
         """Test proper XML escaping in Android strings."""
         yaml_path = temp_dir / "translations.yaml"
