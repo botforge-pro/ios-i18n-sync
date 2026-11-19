@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from .catalog import (
+    QUANTITIES,
     Catalog,
     fill_plural_variable,
     plural_variable,
@@ -239,16 +240,17 @@ class I18nSync:
         languages = self._yaml_languages()
 
         self._refuse_strings_beside_the_catalog()
-        missing = 0
+        missing_catalog = 0
+        missing_strings = 0
         removed = set()
         uses_catalog = self.catalog_path.exists()
         for section_name in self.strings_files:
             if section_name == CATALOG_SECTION and uses_catalog:
                 catalog = Catalog(self.catalog_path)
-                missing += self._apply_catalog(catalog)
+                missing_catalog += self._apply_catalog(catalog)
                 removed |= catalog.removed_languages
             else:
-                missing += self._apply_section(section_name, languages)
+                missing_strings += self._apply_section(section_name, languages)
 
         # Write .stringsdict files for plurals
         if self.plurals and not uses_catalog:
@@ -260,10 +262,13 @@ class I18nSync:
             print(f"Remove {lang} from the localizations of the Xcode project too")
 
         print(f"Applied translations to {len(languages)} languages")
-        if missing:
-            # A per-key warning scrolls past in a wall of "Updated ..." lines.
-            # The count is what a human actually reads.
-            print(f"{missing} missing translation(s) written as empty strings")
+        if missing_catalog:
+            print(
+                f"{missing_catalog} missing catalog translation(s) omitted; "
+                "falling back to the source language"
+            )
+        if missing_strings:
+            print(f"{missing_strings} missing translation(s) written as empty strings")
 
     def _yaml_languages(self) -> set[str]:
         languages = self.translations.get_all_languages()
@@ -647,13 +652,23 @@ class I18nSync:
     def _report_statistics(self) -> None:
         """Report extraction statistics and missing keys."""
         total_keys = 0
-        languages = self.translations.get_all_languages()
+        languages = self._yaml_languages()
+        sections = self.translations.to_yaml_dict()
+        if self.plurals:
+            sections["Plurals"] = {
+                key: {
+                    lang: "".join(forms.get(quantity, "") for quantity in QUANTITIES)
+                    for lang, forms in values.items()
+                    if lang != "_format_key"
+                }
+                for key, values in self.plurals.items()
+            }
 
         for entry in self.unread_stringsdict_entries:
             print(f"Warning: not a plural this tool reads, left out: {entry}")
         print("\nExtraction summary:")
-        for section_name, section in self.translations.sections.items():
-            key_count = len(section.keys)
+        for section_name, keys in sections.items():
+            key_count = len(keys)
             total_keys += key_count
             print(f"  {section_name}: {key_count} keys")
 
@@ -661,12 +676,10 @@ class I18nSync:
 
         # Check for missing translations
         missing_found = False
-        for section_name, section in self.translations.sections.items():
-            for key, trans_key in section.keys.items():
+        for section_name, keys in sections.items():
+            for key, values in keys.items():
                 missing_langs = {
-                    lang
-                    for lang in languages
-                    if not (trans_key.get_translation(lang) or "").strip()
+                    lang for lang in languages if not (values.get(lang) or "").strip()
                 }
                 if missing_langs:
                     if not missing_found:
